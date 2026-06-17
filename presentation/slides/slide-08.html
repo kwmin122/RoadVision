@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1280">
-<title>Slide 08 — LDW + 버드아이</title>
+<title>Slide 08 — 차선 이탈 경고 — 바퀴-차선 거리 모델</title>
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -11,42 +11,29 @@
 
   <div class="slide-header">
     <span class="section-badge">08</span>
-    <h2>차선 이탈 경고(LDW) + 버드아이 뷰</h2>
-    <span class="sidebar-tag">LDW &amp; Bird-Eye View</span>
+    <h2>차선 이탈 경고 — 바퀴-차선 거리 모델</h2>
+    <span class="sidebar-tag">LDW Distance Model</span>
   </div>
 
-  <div class="slide-body slide-body--row">
+  <div class="slide-body" style="padding-top:14px; padding-bottom:28px; gap:10px;">
 
-    <!-- LEFT: LDW explanation + image -->
-    <div class="col col--55" style="justify-content:space-between;">
-      <div>
-        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">차선 이탈 경고 (LDW)</div>
-        <ul class="bullets bullets--lg">
-          <li>좌/우 차선 중앙 ↔ 화면 중심 비교 → <strong>정규화 오프셋</strong></li>
-          <li>히스테리시스 임계: 켜짐 <strong>0.35</strong> / 꺼짐 <strong>0.25</strong></li>
-          <li>경고가 <strong>깜빡이지 않는</strong> 안정적 on/off</li>
-        </ul>
-      </div>
-      <div class="img-frame" style="height:220px; width:100%; margin-top:8px;">
-        <img src="../assets/st08_ldw_warn.png" alt="LDW 경고 배너">
-      </div>
-      <div class="caption">차선 이탈 경고 배너 표시</div>
-    </div>
+    <!-- Bullets block -->
+    <ul class="bullets bullets--lg">
+      <li>차선중앙 vs 차량중심 → <strong>정규화 오프셋</strong></li>
+      <li>물리 환산: 차폭 <strong>1.8m</strong>·차선폭 <strong>3.7m</strong> 가정 → <strong>바퀴–차선 남은 거리(m)</strong></li>
+      <li><span style="color:#e8a000; font-weight:700;">CAUTION ≤ 0.45m</span>(노랑, 조기경보) &nbsp;·&nbsp; <span style="color:#c0392b; font-weight:700;">DANGER ≤ 0.15m</span>(빨강, 임박)</li>
+      <li>거리 히스테리시스로 <strong>깜빡임 방지</strong></li>
+      <li><span style="color:var(--muted); font-size:14px;">※ 미보정 근사 지표 — 정밀 측정 아님</span></li>
+      <li>9강 호모그래피 <strong>버드아이 뷰</strong> 병행</li>
+    </ul>
 
-    <!-- RIGHT: bird-eye explanation + image -->
-    <div class="col col--40" style="justify-content:space-between;">
-      <div>
-        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">버드아이 뷰 (9강 호모그래피)</div>
-        <ul class="bullets">
-          <li>원근 투영 → <strong>탑다운 변환</strong></li>
-          <li>도로 기하를 왜곡 없이 표현</li>
-          <li>우측 상단에 실시간 미니맵 표시</li>
-        </ul>
+    <!-- 3-state strip — full width, contain so all 3 panels show -->
+    <div style="width:100%; flex:1; min-height:0; display:flex; flex-direction:column; gap:6px; justify-content:flex-end;">
+      <div style="border-radius:8px; box-shadow:0 2px 12px rgba(46,91,186,.10); overflow:hidden; background:#f5f5f5; display:flex; align-items:center; justify-content:center; max-height:200px;">
+        <img src="../assets/st08c_ldw_states.png" alt="LDW 3상태 스트립 — SAFE/CAUTION/DANGER"
+             style="width:100%; height:auto; max-height:200px; object-fit:contain; display:block;">
       </div>
-      <div class="img-frame" style="height:260px; width:100%; margin-top:8px;">
-        <img src="../assets/st09_birdeye.png" alt="버드아이 뷰">
-      </div>
-      <div class="caption">호모그래피 버드아이 뷰</div>
+      <div class="caption">SAFE(녹) → CAUTION ≤0.45m(노랑) → DANGER ≤0.15m(빨강) 3-상태 경고</div>
     </div>
 
   </div>
@@ -57,6 +44,6 @@
   </div>
 
 </div>
-<!-- NOTES: 검출된 좌우 차선의 중앙과 화면 중심을 비교해 정규화된 오프셋을 구합니다. 이 값이 임계를 넘으면 이탈 경고를 띄우는데, 켜짐과 꺼짐 임계를 다르게 둬서 경고가 깜빡이지 않게 했습니다. 또 9강의 호모그래피로 도로를 위에서 내려다본 버드아이 뷰로 변환해, 우측 상단에 함께 보여줍니다. -->
+<!-- NOTES: 검출된 좌우 차선의 중앙과 차량 중심을 비교해 정규화 오프셋을 구합니다. 차폭 1.8m·차선폭 3.7m를 가정해 픽셀 오프셋을 바퀴-차선 남은 거리(m)로 환산합니다. 거리가 0.45m 이하면 노란 주의, 0.15m 이하면 빨간 위험 경고가 뜹니다. 거리 히스테리시스로 경고가 깜빡이지 않게 했습니다. 카메라 보정을 하지 않았으므로 정밀 측정이 아닌 근사 지표임을 명시합니다. 도로는 9강 호모그래피로 버드아이 뷰도 함께 보여줍니다. -->
 </body>
 </html>

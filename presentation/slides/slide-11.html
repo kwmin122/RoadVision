@@ -17,7 +17,7 @@
 
   <div class="slide-body slide-body--row" style="padding-bottom:40px;">
 
-    <!-- LEFT: metric cards + closing -->
+    <!-- LEFT: metric cards + vehicle story + closing -->
     <div class="col col--55" style="justify-content:space-between;">
       <!-- 3 metric cards -->
       <div class="stat-row">
@@ -40,26 +40,34 @@
 
       <div class="divider"></div>
 
-      <!-- Limit -->
+      <!-- Vehicle detection vs tracking -->
       <div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">한계 — 차량 검출</div>
-        <ul class="bullets">
-          <li>고전 기법 차량 후보: <strong>7% FP</strong> 프레임 — 대부분 도로 질감 오검출</li>
-          <li>이 한계가 <strong>딥러닝이 필요한 이유</strong></li>
-        </ul>
+        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">차량 — 검출 vs 추적</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:10px; background:var(--blue-light); border-radius:6px; padding:8px 12px;">
+            <span style="color:#c0392b; font-size:18px; font-weight:800; flex-shrink:0;">✕</span>
+            <span style="font-size:14px;">차량 <strong>검출</strong>: Haar <strong style="color:#c0392b;">7% FP</strong> — 대부분 오검출 <span style="color:var(--muted);">(한계)</span></span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; background:#eafaf1; border-radius:6px; padding:8px 12px;">
+            <span style="color:#27ae60; font-size:18px; font-weight:800; flex-shrink:0;">✓</span>
+            <span style="font-size:14px;">차량 <strong>추적</strong>: CSRT <strong style="color:#27ae60;">1060프레임 LOST 0</strong> <span style="color:var(--muted);">(성공)</span></span>
+          </div>
+        </div>
+        <div style="margin-top:6px; font-size:13px; color:var(--muted); font-style:italic;">검출은 어렵지만 추적은 된다 → 검출 한계가 DL 동기</div>
       </div>
 
-      <div class="closing-line" style="margin-top:8px;">
+      <div class="closing-line" style="margin-top:6px;">
         고전 CV만으로 ADAS 핵심 기능을<br><strong>안정적으로 완성</strong>
       </div>
     </div>
 
-    <!-- RIGHT: vehicle image -->
+    <!-- RIGHT: CSRT tracking image -->
     <div class="col col--40" style="align-items:center; justify-content:center;">
-      <div class="img-frame" style="width:100%; height:320px;">
-        <img src="../assets/st11_vehicle.png" alt="차량 검출 한계">
+      <div class="img-frame" style="width:100%; height:280px;">
+        <img src="../assets/st12_track.png" alt="CSRT 차량 추적 — 1060프레임 LOST 0"
+             style="width:100%; height:100%; object-fit:contain; display:block; background:#111;">
       </div>
-      <div class="caption" style="margin-top:6px;">차량 검출: 7% 프레임 FP — "딥러닝이 필요한 이유"</div>
+      <div class="caption" style="margin-top:6px;">CSRT 추적: 1060프레임 / LOST 0</div>
       <div class="accent-box--light accent-box" style="margin-top:10px; font-size:13px; width:100%;">
         <strong>감사합니다</strong> — RoadVision
       </div>
@@ -73,6 +81,6 @@
   </div>
 
 </div>
-<!-- NOTES: 정리하면, 직선 두 클립에서 좌우 차선 검출률 100퍼센트를 달성했고, 차선 이탈 경고는 합성 이동 테스트로 따로 검증했습니다. 차량 검출도 실험해 봤지만, 고전 기법으로는 7퍼센트의 프레임에서만 후보가 잡혔고 대부분 도로 질감 오검출이었습니다. 이 한계가 바로 딥러닝이 필요한 이유입니다. 고전 컴퓨터비전만으로도 차선 인식과 이탈 경고라는 ADAS 핵심 기능을 안정적으로 완성할 수 있었습니다. 감사합니다. -->
+<!-- NOTES: 정리하면, 직선 두 클립에서 좌우 차선 검출률 100퍼센트를 달성했고, 이탈 경고는 바퀴-차선 거리 모델로 합성 이동 테스트까지 검증했습니다. 차량은 두 가지로 나눠 봤습니다. 검출은 고전 기법으로 7퍼센트의 프레임에서만 잡혔고 대부분 오검출이라 한계가 분명했지만, 한 번 잡은 차를 CSRT 트래커로 추적하니 1060프레임 내내 LOST 0으로 끝까지 안정적으로 따라갔습니다. 고전 CV로 검출은 어렵지만 추적은 된다는 거죠. 검출의 이 한계가 딥러닝이 필요한 이유입니다. 고전 컴퓨터비전만으로도 차선 인식과 이탈 경고라는 ADAS 핵심 기능은 안정적으로 완성할 수 있었습니다. 감사합니다. -->
 </body>
 </html>
