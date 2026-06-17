@@ -171,9 +171,10 @@ def main() -> None:
           f"exit>{config.LDW['danger_exit_dist_m']}m  "
           f"fill_alpha={config.LDW['fill_alpha']}")
 
-    # 스무더 + 이탈 상태 초기화
-    smoother  = LaneSmoother()
-    dep_state = dep.DepartureState()
+    # 스무더 + 이탈 상태 + 베이스라인 보정기 초기화
+    smoother   = LaneSmoother()
+    dep_state  = dep.DepartureState()
+    calibrator = dep.BaselineCalibrator()  # 카메라 마운트 바이어스 보정 (config.BASELINE_ENABLE)
 
     # LDW 데모 모드: 4-state 대표 프레임 저장 추적 (DANGER는 LEFT/RIGHT 분리)
     # 키: "SAFE", "CAUTION", "DANGER_L", "DANGER_R"
@@ -192,6 +193,9 @@ def main() -> None:
 
     # M6 곡선 모드 카운터 (CURVE / fallback 프레임 수 집계)
     curve_frame_counts = {"CURVE": 0, "STRAIGHT(fallback)": 0}
+
+    # 3-state LDW 상태 카운터 (정직성 게이트: 정상 주행에서 CAUTION/DANGER = 0이어야)
+    lane_st_counts: dict[str, int] = {"SAFE": 0, "CAUTION": 0, "DANGER": 0}
 
     # M7 차량 보너스 상태 (vehicle 플래그 ON 시에만 사용)
     _prev_gray: np.ndarray | None = None   # optical flow용 직전 프레임 gray
@@ -286,6 +290,15 @@ def main() -> None:
         # 7. LDW 오프셋 계산
         off = dep.offset(smoothed_left, smoothed_right, W)
 
+        # 7c. 베이스라인 바이어스 보정 (카메라 마운트 편향 제거)
+        # raw off는 CSV·smoother·state_counts에 이미 반영됨 → 보정은 표시·판정에만 적용.
+        # calibrator.feed()는 수집 완료 전까지 샘플을 쌓고, 완료 후 no-op.
+        # calibrator.apply()는 수집 완료 전에는 off 그대로, 완료 후 off−bias 반환.
+        # 가정: 클립 시작 구간에서 차량이 차선 중앙 주행 (PLAN §8 honesty note).
+        if not args.ldw_demo:
+            calibrator.feed(off)
+        off_cal = calibrator.apply(off) if not args.ldw_demo else off
+
         # 7b. LDW DEMO 드리프트 주입 (--ldw-demo 시에만, off가 None이 아닐 때만)
         # 실제 CSV·smoother·state_counts는 7 이전에 모두 기록됨 → 무변경 보장.
         # 드리프트: 사인파. amplitude × sin(2π × frame / period)
@@ -295,21 +308,21 @@ def main() -> None:
         #   frame 3period/4~period: -amplitude → 0 (safe)
         # 부호: 음수=LEFT 이탈, 양수=RIGHT 이탈 (departure.py 규약)
         # 실제 off는 미세하므로 drift가 상태 전환을 주도함.
-        _demo_drift_off = off  # 데모/일반 분기 후 동일 변수명 유지
+        _demo_drift_off = off_cal  # 데모/일반 분기 후 동일 변수명 유지
         if args.ldw_demo and off is not None:
             amp    = config.LDW["demo_drift_amplitude"]
             period = config.LDW["demo_drift_period_frames"]
             # 부호: 음수 먼저 → LEFT DANGER 먼저, 양수 → RIGHT DANGER (task 시퀀스)
             drift  = -amp * math.sin(2 * math.pi * frames_read / period)
-            _demo_drift_off = off + drift
+            _demo_drift_off = off_cal + drift
 
         # 8. 히스테리시스 경고 상태 갱신
         # 데모 모드: 드리프트 적용된 오프셋으로 경고 판단
-        # 일반 모드: 실제 off 그대로 (기존 동작 100% 유지)
+        # 일반 모드: 보정된 off_cal 사용 (기존 동작에 바이어스 보정 추가)
         if args.ldw_demo:
             warning, side = dep_state.update(_demo_drift_off)
         else:
-            warning, side = dep_state.update(off)
+            warning, side = dep_state.update(off_cal)
 
         # debug-warn용 + birdeye-debug용 원본 복사 (렌더링 전)
         need_clean_copy = (
@@ -363,9 +376,13 @@ def main() -> None:
 
         # 9. 오버레이 합성 (in-place)
         # 데모 모드에서는 드리프트 오프셋(_demo_drift_off)으로 3-state 계산.
-        # 일반 모드에서는 실제 off로 계산 (SAFE/CAUTION/DANGER 상태 없는 원래 동작과 동일).
-        _off_for_display = _demo_drift_off if args.ldw_demo else off
+        # 일반 모드에서는 보정된 off_cal으로 계산.
+        _off_for_display = _demo_drift_off if args.ldw_demo else off_cal
         lane_st = dep.lane_state(_off_for_display, warning, dep_state.caution)
+
+        # 3-state LDW 카운터 누적 (정직성 게이트 출력용)
+        if not args.ldw_demo:
+            lane_st_counts[lane_st] = lane_st_counts.get(lane_st, 0) + 1
 
         # LDW 데모: 4-state 대표 프레임 저장 (처음 만나는 각 상태에서 1회)
         # 키: "SAFE", "CAUTION", "DANGER_L", "DANGER_R"
@@ -433,6 +450,16 @@ def main() -> None:
 
         # Bird-eye PiP 합성 (render_frame 이후, 오버레이된 프레임 우상단에 삽입)
         ov.draw_birdeye_pip(frame, warped_frame)
+
+        # kr_ 검증 프레임 저장 (frames/kr_{clip}.png): 안정 구간 1회
+        # 목적: 한글 렌더링·범례·상태 SAFE 시각적 검증.
+        # 프레임 50 (스무더 워밍업 이후, calibrator 수집 완료 이후 안정 구간)
+        _KR_FRAME = 50
+        if frames_read == _KR_FRAME and not args.ldw_demo:
+            kr_path = os.path.join(config.FRAMES_DIR, f"kr_{clip_key}.png")
+            cv2.imwrite(kr_path, frame)
+            print(f"  [kr-verify] 한글 검증 프레임 저장: {kr_path}  "
+                  f"(frame={frames_read}, lane_st={lane_st})")
 
         # M6 project_video 곡선 디버그 프레임 저장 (frames/curve_pv_{n}.png)
         _CURVE_PV_FRAMES = {1000, 1030, 1060}
@@ -679,6 +706,31 @@ def main() -> None:
         print(f"    consecutive_missing : {mis:4d}  ({mis/total_frames*100:.1f}%)")
         print(f"    합계 검증           : {raw+rej+hld+mis} / {total_frames}"
               f"  {'OK' if raw+rej+hld+mis == total_frames else '*** MISMATCH ***'}")
+
+    # 베이스라인 보정 상태 보고
+    if not args.ldw_demo:
+        print("\n=== 베이스라인 바이어스 보정 ===")
+        print(f"  BASELINE_ENABLE  : {config.BASELINE_ENABLE}")
+        print(f"  BASELINE_FRAMES  : {config.BASELINE_FRAMES}")
+        print(f"  수집 샘플 수     : {calibrator.n_collected}")
+        print(f"  보정 완료        : {calibrator.calibrated}")
+        print(f"  bias (중앙값)    : {calibrator.bias:+.4f}"
+              f"  → 차선 중앙 offset이 {calibrator.bias:+.4f}에서 ≈0으로 보정됨")
+        print("  ※ 가정: 클립 시작 구간에서 차량이 차선 중앙 주행 (PLAN §8 honesty note)")
+
+    # 3-state LDW 상태 분포 (정직성 게이트)
+    if not args.ldw_demo:
+        safe_n    = lane_st_counts.get("SAFE", 0)
+        caution_n = lane_st_counts.get("CAUTION", 0)
+        danger_n  = lane_st_counts.get("DANGER", 0)
+        total_st  = safe_n + caution_n + danger_n
+        print("\n=== 3-state LDW 판정 분포 (정직성 게이트) ===")
+        print(f"  SAFE    : {safe_n:5d}프레임 ({100*safe_n/max(total_st,1):.1f}%)")
+        print(f"  CAUTION : {caution_n:5d}프레임 ({100*caution_n/max(total_st,1):.1f}%)")
+        print(f"  DANGER  : {danger_n:5d}프레임 ({100*danger_n/max(total_st,1):.1f}%)")
+        cd_total = caution_n + danger_n
+        gate = "OK (정상주행=SAFE)" if cd_total == 0 else f"*** 주의: {cd_total}프레임 비정상 ***"
+        print(f"  CAUTION+DANGER : {cd_total}프레임 → {gate}")
 
     # M6 곡선 모드 집계 보고
     print("\n=== M6 곡선 모드 집계 ===")

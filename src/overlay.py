@@ -30,6 +30,7 @@ import numpy as np
 
 from src import config
 from src import departure as _dep
+from src import textkr as _tkr  # 한글 텍스트 렌더링 (Pillow 기반)
 
 # ---------- 색상 상수 ----------
 _GREEN_FILL = (0, 200, 0)
@@ -134,7 +135,7 @@ def draw_ldw_banner(
     경고 ON 시 화면 상단에 빨강 배너와 텍스트를 그린다 (in-place).
 
     배너 높이: config.LDW["banner_height"] (px).
-    표시 텍스트: "LANE DEPARTURE → LEFT" 또는 "LANE DEPARTURE → RIGHT".
+    표시 텍스트: "차선 이탈 경고 → 왼쪽" 또는 "차선 이탈 경고 → 오른쪽" (한글).
 
     NOTE: DANGER 상태에서는 draw_danger_banner()가 이 배너를 대체한다.
     """
@@ -147,23 +148,24 @@ def draw_ldw_banner(
     cv2.rectangle(overlay, (0, 0), (W, bh), _RED_BANNER, -1)
     cv2.addWeighted(overlay, banner_alpha, frame, 1 - banner_alpha, 0, frame)
 
-    text = f"LANE DEPARTURE  ->  {side}"
-    font      = cv2.FONT_HERSHEY_DUPLEX
-    font_scale = 1.0
-    thickness  = 2
-
-    (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
-    tx = (W - tw) // 2
-    ty = (bh + th) // 2
-
-    # 윤곽선 (가독성)
-    cv2.putText(frame, text, (tx, ty), font, font_scale, _BLACK,  thickness + 2, cv2.LINE_AA)
-    cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE,  thickness,     cv2.LINE_AA)
+    side_kr = "왼쪽" if side == "LEFT" else "오른쪽"
+    text = f"차선 이탈 경고  →  {side_kr}"
+    fs = config.KOREAN_FONT_SIZE_BANNER
+    font = _tkr.get_font(fs)
+    # 텍스트 너비 측정 (PIL)
+    from PIL import Image as _PILImg, ImageDraw as _PILDraw
+    _tmp = _PILDraw.Draw(_PILImg.new("RGB", (1, 1)))
+    bbox = _tmp.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    tx = max(0, (W - tw) // 2)
+    ty = max(0, (bh - th) // 2)
+    _tkr.put_kr(frame, text, (tx, ty), fs, _WHITE, outline_color=_BLACK, outline_px=2)
 
 
 def draw_caution_strip(frame: np.ndarray) -> None:
     """
-    CAUTION 상태: 상단 황색 띠 + "LANE PROXIMITY / CAUTION" 텍스트 (in-place).
+    CAUTION 상태: 상단 황색 띠 + "차선 근접 · 주의" 텍스트 (in-place, 한글).
 
     caution_strip_alpha: config.LDW["caution_strip_alpha"] — 0.90으로 선명하게.
     """
@@ -176,17 +178,17 @@ def draw_caution_strip(frame: np.ndarray) -> None:
     cv2.rectangle(overlay, (0, 0), (W, sh), bg_color, -1)
     cv2.addWeighted(overlay, strip_alpha, frame, 1.0 - strip_alpha, 0, frame)
 
-    text = "  LANE PROXIMITY  /  CAUTION  "
-    font      = cv2.FONT_HERSHEY_DUPLEX
-    font_scale = 0.75
-    thickness  = 2
-
-    (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
-    tx = (W - tw) // 2
-    ty = (sh + th) // 2
-
-    cv2.putText(frame, text, (tx, ty), font, font_scale, _BLACK, thickness + 2, cv2.LINE_AA)
-    cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE, thickness,     cv2.LINE_AA)
+    text = "차선 근접 · 주의"
+    fs = config.KOREAN_FONT_SIZE_BANNER
+    font = _tkr.get_font(fs)
+    from PIL import Image as _PILImg, ImageDraw as _PILDraw
+    _tmp = _PILDraw.Draw(_PILImg.new("RGB", (1, 1)))
+    bbox = _tmp.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    tx = max(0, (W - tw) // 2)
+    ty = max(0, (sh - th) // 2)
+    _tkr.put_kr(frame, text, (tx, ty), fs, _BLACK, outline_color=None)
 
 
 def draw_danger_border(frame: np.ndarray, frame_no: int) -> None:
@@ -217,7 +219,7 @@ def draw_danger_border(frame: np.ndarray, frame_no: int) -> None:
 
 def draw_danger_banner(frame: np.ndarray, side: str, frame_no: int) -> None:
     """
-    DANGER 상태: 화면 상단 대형 배너 "⚠ 차선 이탈 / LANE DEPARTURE" (in-place).
+    DANGER 상태: 화면 상단 대형 배너 "차선 이탈 경고 / 왼쪽|오른쪽" (in-place, 한글).
 
     플래시와 동기화: 짝수 프레임 → 진한 배경, 홀수 → 약간 밝은 배경.
     """
@@ -230,20 +232,25 @@ def draw_danger_banner(frame: np.ndarray, side: str, frame_no: int) -> None:
     cv2.rectangle(overlay, (0, 0), (W, bh), bg, -1)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
-    # 한글+영어 2행: ⚠ + 이탈 방향
-    line1 = f"!  {side} LANE DEPARTURE  !"
-    line2 = f"[  WARNING  --  {side}  ]"
-    font      = cv2.FONT_HERSHEY_DUPLEX
-    font_scale = 1.05
-    thickness  = 2
-
-    for i, text in enumerate([line1, line2]):
-        (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
-        tx = (W - tw) // 2
-        # 두 줄 세로 배치: 상단 여백 약간 두고 줄간 th+4
-        ty = (bh // 2) - th // 2 + i * (th + 5) - (th // 2)
-        cv2.putText(frame, text, (tx, ty), font, font_scale, _BLACK, thickness + 2, cv2.LINE_AA)
-        cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE, thickness,     cv2.LINE_AA)
+    side_kr = "왼쪽" if side == "LEFT" else "오른쪽"
+    # 한글 2행: 이탈 방향 + 경고
+    lines_kr = [
+        f"차선 이탈 경고 — {side_kr}",
+        "[ 경고 ]",
+    ]
+    fs = config.KOREAN_FONT_SIZE_BANNER
+    font = _tkr.get_font(fs)
+    from PIL import Image as _PILImg, ImageDraw as _PILDraw
+    _tmp = _PILDraw.Draw(_PILImg.new("RGB", (1, 1)))
+    line_h = fs + 4
+    total_h = len(lines_kr) * line_h
+    y_start = max(0, (bh - total_h) // 2)
+    for i, text in enumerate(lines_kr):
+        bbox = _tmp.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        tx = max(0, (W - tw) // 2)
+        ty = y_start + i * line_h
+        _tkr.put_kr(frame, text, (tx, ty), fs, _WHITE, outline_color=_BLACK, outline_px=2)
 
 
 def draw_drift_arrow(frame: np.ndarray, side: str) -> None:
@@ -338,26 +345,29 @@ def draw_offset_gauge(
         cv2.circle(frame, (mx, mid_y), mr, _BLACK, -1)
         cv2.circle(frame, (mx, mid_y), mr - 2, marker_color, -1)
 
-        # 수치 텍스트 (마커 위): wheel→line 거리(m) + 근사값 노트
+        # 수치 텍스트 (마커 위): 바퀴–차선 거리(m) + 근사값 노트 (한글)
         wtl = _dep.wheel_to_line_m(off)
         lat_m = _dep.lateral_offset_m(off)
-        wtl_str  = f"wheel->line: {wtl:.2f} m  ~approx(uncalibrated)"
-        lat_str  = f"offset_m: {lat_m:+.2f} m"
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        fs   = 0.42
-        th   = 1
-        # wheel->line 행 (마커 위)
-        (tw, tth), _ = cv2.getTextSize(wtl_str, font, fs, th)
+        wtl_str  = f"바퀴–차선: {wtl:.2f} m  ※ 근사값(미보정)"
+        lat_str  = f"오프셋: {lat_m:+.2f} m"
+        fs_small = config.KOREAN_FONT_SIZE_SMALL
+        from PIL import Image as _PILImg2, ImageDraw as _PILDraw2
+        font_small = _tkr.get_font(fs_small)
+        _tmp2 = _PILDraw2.Draw(_PILImg2.new("RGB", (1, 1)))
+        # wtl_str 행 (마커 위)
+        bbox_w = _tmp2.textbbox((0, 0), wtl_str, font=font_small)
+        tw = bbox_w[2] - bbox_w[0]
+        tth = bbox_w[3] - bbox_w[1]
         tx = max(x_left, min(mx - tw // 2, x_right - tw))
-        ty = gauge_y1 - 5
-        cv2.putText(frame, wtl_str, (tx, ty), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
-        cv2.putText(frame, wtl_str, (tx, ty), font, fs, marker_color, th, cv2.LINE_AA)
-        # offset_m 행 (wheel->line 위)
-        (tw2, _), _ = cv2.getTextSize(lat_str, font, fs, th)
+        ty = gauge_y1 - tth - 5
+        _tkr.put_kr(frame, wtl_str, (tx, ty), fs_small, marker_color, outline_color=_BLACK)
+        # lat_str 행 (wtl 위)
+        bbox_l = _tmp2.textbbox((0, 0), lat_str, font=font_small)
+        tw2 = bbox_l[2] - bbox_l[0]
+        th2 = bbox_l[3] - bbox_l[1]
         tx2 = max(x_left, min(mx - tw2 // 2, x_right - tw2))
-        ty2 = ty - tth - 3
-        cv2.putText(frame, lat_str, (tx2, ty2), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
-        cv2.putText(frame, lat_str, (tx2, ty2), font, fs, marker_color, th, cv2.LINE_AA)
+        ty2 = ty - th2 - 3
+        _tkr.put_kr(frame, lat_str, (tx2, ty2), fs_small, marker_color, outline_color=_BLACK)
     else:
         # offset N/A
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -397,14 +407,15 @@ def draw_hud(
     H, W = frame.shape[:2]
 
     _abbr = {
-        "raw_detected":        "raw",
-        "rejected_as_outlier": "rej",
-        "held_from_previous":  "hld",
-        "consecutive_missing": "mis",
+        "raw_detected":        "검출",
+        "rejected_as_outlier": "이상치",
+        "held_from_previous":  "유지",
+        "consecutive_missing": "미검출",
     }
 
     off_str = f"{off:+.3f}" if off is not None else "N/A"
-    warn_str = f"{side}" if (warning and side) else "OFF"
+    side_kr = ("왼쪽" if side == "LEFT" else "오른쪽") if side else None
+    warn_str = f"{side_kr}" if (warning and side_kr) else "없음"
     warn_color = _RED_LINE if warning else _GREEN_LINE
 
     # wheel→line 거리 및 측방향 오프셋(m) HUD 표시
@@ -417,41 +428,39 @@ def draw_hud(
         wtl_str = "N/A"
         lat_str = "N/A"
 
+    # HUD 항목 (한글 레이블 + 영숫자 수치)
     lines: list[tuple[str, tuple[int, int, int]]] = [
-        (f"frame {frame_no}/{total_frames}  "
-         f"L:{_abbr.get(left_state, left_state)}  "
-         f"R:{_abbr.get(right_state, right_state)}  "
-         f"segs:{n_segs}",
+        (f"프레임 {frame_no}/{total_frames}  "
+         f"좌:{_abbr.get(left_state, left_state)}  "
+         f"우:{_abbr.get(right_state, right_state)}  "
+         f"선분:{n_segs}",
          _WHITE),
-        (f"offset: {off_str}  offset_m: {lat_str}", _YELLOW_HUD),
-        (f"wheel->line: {wtl_str}  ~approx(uncalibrated)", _YELLOW_HUD),
-        (f"WARN: {warn_str}", warn_color),
+        (f"오프셋: {off_str}  횡방향: {lat_str}", _YELLOW_HUD),
+        (f"바퀴–차선: {wtl_str}  ※ 근사값(미보정)", _YELLOW_HUD),
+        (f"경고: {warn_str}", warn_color),
     ]
 
     # M6 추가 HUD 행 (curve_mode가 None이 아닐 때만)
     if curve_mode is not None:
+        mode_kr = "곡선" if curve_mode == "CURVE" else "직선(폴백)"
         mode_color = _YELLOW_HUD if curve_mode == "CURVE" else _WHITE
-        lines.append((f"MODE: {curve_mode}", mode_color))
+        lines.append((f"모드: {mode_kr}", mode_color))
         if curve_mode == "CURVE" and curvature_r is not None:
-            r_str = f"{curvature_r:.0f}px" if curvature_r < 9_000_000 else "straight"
-            lines.append((f"Radius: {r_str}", _YELLOW_HUD))
+            r_str = f"{curvature_r:.0f}px" if curvature_r < 9_000_000 else "직선"
+            lines.append((f"곡률반경: {r_str}", _YELLOW_HUD))
 
     # demo 태그 (정직성)
     if demo:
-        lines.append(("LDW DEMO  --  drift simulated", (0, 200, 220)))
+        lines.append(("LDW DEMO  --  드리프트 시뮬레이션", (0, 200, 220)))
 
-    font       = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.65
-    thickness  = 2
-    line_h     = 24
-    x0         = 10
-    y0         = H - line_h * len(lines) - 8
+    fs_hud = config.KOREAN_FONT_SIZE_SMALL
+    line_h = fs_hud + 6
+    x0     = 10
+    y0     = H - line_h * len(lines) - 8
 
     for i, (text, color) in enumerate(lines):
         y = y0 + i * line_h
-        # 검정 외곽선으로 가독성 확보
-        cv2.putText(frame, text, (x0, y), font, font_scale, _BLACK, thickness + 1, cv2.LINE_AA)
-        cv2.putText(frame, text, (x0, y), font, font_scale, color,  thickness,     cv2.LINE_AA)
+        _tkr.put_kr(frame, text, (x0, y), fs_hud, color, outline_color=_BLACK, outline_px=1)
 
 
 def draw_curved_area(
@@ -562,17 +571,55 @@ def draw_birdeye_pip(
         border,
     )
 
-    # "BIRD-EYE" 레이블 (패널 좌하단 안쪽)
-    label      = "BIRD-EYE"
-    font       = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.45
-    thickness  = 1
-    (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
+    # "버드아이(위에서 본 도로)" 레이블 (패널 좌하단 안쪽, 한글)
+    label  = "버드아이(위에서 본 도로)"
+    fs_pip = config.KOREAN_FONT_SIZE_SMALL
+    from PIL import Image as _PILImg3, ImageDraw as _PILDraw3
+    font_pip = _tkr.get_font(fs_pip)
+    _tmp3 = _PILDraw3.Draw(_PILImg3.new("RGB", (1, 1)))
+    bbox_pip = _tmp3.textbbox((0, 0), label, font=font_pip)
+    th_pip = bbox_pip[3] - bbox_pip[1]
     lx = x1 + 4
-    ly = y2 - 6
-    # 검정 외곽선으로 가독성 확보
-    cv2.putText(frame, label, (lx, ly), font, font_scale, _BLACK,              thickness + 1, cv2.LINE_AA)
-    cv2.putText(frame, label, (lx, ly), font, font_scale, pip_cfg["label_color"], thickness,     cv2.LINE_AA)
+    ly = y2 - th_pip - 4
+    _tkr.put_kr(frame, label, (lx, ly), fs_pip,
+                pip_cfg["label_color"], outline_color=_BLACK, outline_px=1)
+
+
+def draw_legend(frame: np.ndarray) -> None:
+    """
+    화면 좌상단에 반투명 설명 범례 패널을 그린다 (in-place).
+
+    config.SHOW_LEGEND=True 일 때만 render_frame()에서 호출됨.
+    내용: 화면 오버레이 요소의 한글 설명 목록.
+    위치: 좌상단 (우상단=버드아이, 하단=HUD+게이지와 겹치지 않게).
+    """
+    legend_items = [
+        "[ 범례 ]",
+        "초록 영역 = 주행 가능 차로",
+        "노랑 = 차선 근접 주의",
+        "빨강 = 이탈 위험",
+        "게이지 = 차로 내 차량 위치",
+        "우측상단 = 버드아이 뷰",
+    ]
+    fs = config.KOREAN_FONT_SIZE_LEGEND
+    line_h = fs + 5
+    pad = 8
+    panel_h = len(legend_items) * line_h + pad * 2
+    panel_w = 240  # 고정 폭 (한글 텍스트 최대 길이 기준)
+
+    # 배경 반투명 박스 (좌상단, 배너 아래 약간 띄움)
+    bh = config.LDW["banner_height"]
+    top_y = bh + 8
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (4, top_y), (4 + panel_w, top_y + panel_h), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
+    cv2.rectangle(frame, (4, top_y), (4 + panel_w, top_y + panel_h), (160, 160, 160), 1)
+
+    for i, item in enumerate(legend_items):
+        color = (0, 220, 255) if i == 0 else _WHITE  # 첫 행(헤더)은 황색
+        x = 4 + pad
+        y = top_y + pad + i * line_h
+        _tkr.put_kr(frame, item, (x, y), fs, color, outline_color=_BLACK, outline_px=1)
 
 
 def render_frame(
@@ -646,6 +693,10 @@ def render_frame(
              curve_mode=curve_mode, curvature_r=curvature_r,
              demo=demo)
 
+    # 6. 설명 범례 패널 (config.SHOW_LEGEND=True 시에만, 좌상단)
+    if config.SHOW_LEGEND:
+        draw_legend(frame)
+
 
 # ── 차량 추적 오버레이 (L10 데모) ────────────────────────────────────────────────
 
@@ -693,32 +744,33 @@ def draw_track(
     if ok and box is not None:
         x, y, w, h = box
         cv2.rectangle(frame, (x, y), (x + w, y + h), _TRACK_OK_COLOR, _TRACK_BOX_THICK)
-        label = "TRACKING (CSRT)"
+        label = "차량 추적 중"
         color = _TRACK_OK_COLOR
         # 라벨: 박스 위에 표시 (화면 상단 밖으로 나가지 않도록 클램핑)
-        ly = max(y - 6, 18)
+        ly = max(y - 22, 2)
     else:
-        label = "LOST"
+        label = "추적 놓침"
         color = _TRACK_LOST_COLOR
         # LOST 시: 마지막 알려진 박스가 있으면 그 위치에 적색 박스
         if box is not None:
             x, y, w, h = box
             cv2.rectangle(frame, (x, y), (x + w, y + h), _TRACK_LOST_COLOR, 1)
-            ly = max(y - 6, 18)
+            ly = max(y - 22, 2)
         # box=None: 기본값 (x=20, ly=80) 사용
 
-    # 검정 외곽선 + 색상 텍스트
-    cv2.putText(frame, label, (x, ly), _TRACK_FONT, _TRACK_FONT_SCALE,
-                _BLACK, _TRACK_FONT_THICK + 1, cv2.LINE_AA)
-    cv2.putText(frame, label, (x, ly), _TRACK_FONT, _TRACK_FONT_SCALE,
-                color, _TRACK_FONT_THICK, cv2.LINE_AA)
+    # 한글 텍스트 (PIL 렌더링)
+    fs_tr = config.KOREAN_FONT_SIZE_NORMAL
+    _tkr.put_kr(frame, label, (x, ly), fs_tr, color, outline_color=_BLACK, outline_px=2)
 
-    # 3) 우하단 상태 태그
+    # 3) 우하단 상태 태그 (한글)
     H, W = frame.shape[:2]
-    tag = f"L10 TRACK  {'OK' if ok else 'LOST'}"
-    fs = 0.50
-    (tw, _th), _ = cv2.getTextSize(tag, _TRACK_FONT, fs, 1)
+    tag_ok = "OK" if ok else "놓침"
+    tag = f"L10 추적  {tag_ok}"
+    from PIL import Image as _PILImg4, ImageDraw as _PILDraw4
+    font_tag = _tkr.get_font(fs_tr)
+    _tmp4 = _PILDraw4.Draw(_PILImg4.new("RGB", (1, 1)))
+    bbox_tag = _tmp4.textbbox((0, 0), tag, font=font_tag)
+    tw = bbox_tag[2] - bbox_tag[0]
     tx = W - tw - 10
-    ty = H - 30
-    cv2.putText(frame, tag, (tx, ty), _TRACK_FONT, fs, _BLACK, 2, cv2.LINE_AA)
-    cv2.putText(frame, tag, (tx, ty), _TRACK_FONT, fs, color, 1, cv2.LINE_AA)
+    ty = H - fs_tr - 10
+    _tkr.put_kr(frame, tag, (tx, ty), fs_tr, color, outline_color=_BLACK, outline_px=1)

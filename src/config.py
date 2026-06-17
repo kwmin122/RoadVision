@@ -285,6 +285,47 @@ VEHICLE = {
     "track_trail_len": 30,
 }
 
+# --- 한글 폰트 (텍스트 렌더링용 Pillow) ---
+# cv2.putText는 한글 불가 → PIL.ImageFont.truetype으로 우회.
+# KOREAN_FONT_PATH: 시스템 폰트 경로. macOS 기본 경로.
+#   primary  : AppleSDGothicNeo.ttc (Apple SD 고딕 Neo, index=0)
+#   fallback : AppleGothic.ttf (둘 다 없으면 RuntimeError)
+KOREAN_FONT_PATH = "/System/Library/Fonts/AppleSDGothicNeo.ttc"        # macOS 기본
+KOREAN_FONT_FALLBACK = "/System/Library/Fonts/Supplemental/AppleGothic.ttf"
+KOREAN_FONT_SIZE_BANNER  = 28   # 큰 배너 폰트 (DANGER/CAUTION 배너)
+KOREAN_FONT_SIZE_NORMAL  = 20   # 일반 HUD / 레이블 폰트
+KOREAN_FONT_SIZE_SMALL   = 16   # 소형 레이블 (bird-eye, 게이지 위 텍스트)
+KOREAN_FONT_SIZE_LEGEND  = 16   # 범례 패널 폰트
+
+# --- 설명 범례 패널 (SHOW_LEGEND) ---
+# SHOW_LEGEND: True이면 render_frame()에서 draw_legend()를 호출해 좌상단에 반투명 패널 표시.
+# 내용: 화면 요소 한글 설명 (초록 영역, 황색/적색 상태, 게이지, 버드아이 뷰).
+SHOW_LEGEND = True
+
+# --- 오프셋 바이어스 보정 (BaselineCalibrator) ---
+# 배경:
+#   카메라 장착 위치/각도 편향으로 인해 차량이 실제 차선 중앙을 주행해도
+#   offset_norm이 0이 아닌 일정한 음수(평균 약 −0.08 ~ −0.15)로 측정됨.
+#   이는 '차선 중앙 = 화면 중앙' 가정과 현실 카메라 장착 간의 오차임.
+#
+# 보정 방법 (정직한 바이어스 제거):
+#   - 클립 시작 후 BASELINE_FRAMES 프레임 동안 (양쪽 차선이 모두 검출된 프레임에서)
+#     offset_norm의 중앙값을 수집한다.
+#   - 이후 모든 오프셋에서 이 중앙값을 뺀다.
+#   - 결과: 정상적인 차선 중앙 주행이 offset ≈ 0으로 표현됨.
+#
+# 가정 (honesty note — PLAN §8):
+#   클립 시작 구간에서 차량이 차선 중앙을 유지한다고 가정.
+#   만약 시작 구간 자체에서 이탈이 발생했다면 보정값이 편향될 수 있음.
+#   이 보정은 '상수 편향(constant bias)'만 제거하며, 실제 이탈을 숨기거나 위조하지 않음.
+#
+# BASELINE_FRAMES: 바이어스 수집에 사용할 초반 프레임 수 (기본 30).
+#   30프레임 ≈ 1~2초 (30fps 기준). 스무더가 워밍업(보통 10프레임)된 이후에도
+#   충분한 샘플이 수집되도록 설정.
+# BASELINE_ENABLE: False이면 보정 비활성화 (raw offset 그대로 사용).
+BASELINE_FRAMES = 30   # 바이어스 수집 초반 프레임 수
+BASELINE_ENABLE = True  # True=보정 ON (정직한 바이어스 제거), False=보정 OFF (raw offset)
+
 # --- 출력 ---
 OUTPUT_DIR = "output"
 FRAMES_DIR = "frames"

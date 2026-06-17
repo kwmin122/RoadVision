@@ -1,5 +1,5 @@
 """
-차선 이탈 경고(LDW) 로직 모듈 — Slice 5 (M4).
+차선 이탈 경고(LDW) 로직 모듈 — Slice 5 (M4) + 베이스라인 오프셋 보정(M-KR).
 
 -- 부호 규약 (한 번 정하고 전체 일관성 유지) --
   lane_center_x = (left_x_bottom + right_x_bottom) / 2
@@ -37,6 +37,8 @@
   이는 일시적 미검출로 인한 경고 오N/오FF 방지.
 """
 from __future__ import annotations
+
+import numpy as np
 
 from src import config
 
@@ -219,3 +221,77 @@ class DepartureState:
         # else: CAUTION 히스테리시스 구간 (caution_dist < wtl ≤ caution_exit) — 변경 없음
 
         return self._warning, self._side
+
+
+class BaselineCalibrator:
+    """
+    클립 시작 구간의 오프셋 중앙값을 수집해 상수 카메라 마운트 바이어스를 제거한다.
+
+    동기:
+      카메라 장착 위치·각도 편향으로 인해 차량이 차선 중앙을 실제로 주행해도
+      offset_norm이 일정하게 편향된 값(예: −0.08 ~ −0.15)으로 측정된다.
+      이를 보정하지 않으면 정상 주행이 CAUTION/DANGER로 잘못 판정될 수 있다.
+
+    보정 방법:
+      1. 시작 N 프레임(config.BASELINE_FRAMES) 동안 양쪽 차선이 모두 검출된 프레임에서
+         offset_norm을 수집한다.
+      2. N 프레임 수집 완료 후 중앙값(median)을 bias로 저장한다.
+      3. 이후 apply(off)는 off - bias를 반환한다.
+
+    가정 (PLAN §8 honesty note):
+      - 클립 시작 구간에서 차량이 차선 중앙을 유지한다고 가정함.
+      - 만약 시작 구간에서 이탈이 있었다면 보정값이 편향될 수 있음.
+      - 이 보정은 '상수 편향(constant bias)'만 제거하며, 실제 이탈 감지를 위조하지 않음.
+      - config.BASELINE_ENABLE = False이면 apply()가 off를 그대로 반환함(보정 없음).
+
+    상태:
+      .calibrated  : True이면 수집 완료(bias 사용 중), False이면 수집 중(raw offset 그대로)
+      .bias        : 수집된 중앙값 (float). calibrated=True 이후 유효.
+      .n_collected : 수집된 샘플 수.
+    """
+
+    def __init__(self) -> None:
+        self._samples: list[float] = []
+        self._bias: float = 0.0
+        self._calibrated: bool = False
+        self._n_target: int = config.BASELINE_FRAMES
+        self._enabled: bool = config.BASELINE_ENABLE
+
+    @property
+    def calibrated(self) -> bool:
+        return self._calibrated
+
+    @property
+    def bias(self) -> float:
+        return self._bias
+
+    @property
+    def n_collected(self) -> int:
+        return len(self._samples)
+
+    def feed(self, off: float | None) -> None:
+        """
+        수집 단계: off가 None이 아닌 동안 샘플을 누적한다.
+        N 프레임 수집 완료 후 median을 bias로 확정하고 calibrated=True로 전환.
+        이미 calibrated된 이후 호출하면 no-op.
+        """
+        if not self._enabled or self._calibrated:
+            return
+        if off is None:
+            return
+        self._samples.append(off)
+        if len(self._samples) >= self._n_target:
+            self._bias = float(np.median(self._samples))
+            self._calibrated = True
+
+    def apply(self, off: float | None) -> float | None:
+        """
+        보정 적용: off - bias를 반환.
+        - BASELINE_ENABLE=False 또는 calibrated=False(아직 수집 중)이면 off 그대로 반환.
+        - off=None이면 None 반환.
+        """
+        if off is None:
+            return None
+        if not self._enabled or not self._calibrated:
+            return off
+        return off - self._bias
