@@ -26,3 +26,4 @@ _workspace/
 # 발표 렌더(재생성 가능) / 데모 자산 예외
 presentation/render/
 !presentation/assets/demo_cut.mp4
+presentation/demo_build/
