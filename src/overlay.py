@@ -645,3 +645,80 @@ def render_frame(
              frame_no, total_frames, n_segs, left_state, right_state,
              curve_mode=curve_mode, curvature_r=curvature_r,
              demo=demo)
+
+
+# ── 차량 추적 오버레이 (L10 데모) ────────────────────────────────────────────────
+
+_TRACK_OK_COLOR   = (0, 255, 0)     # 초록 — 추적 성공
+_TRACK_LOST_COLOR = (0, 0, 255)     # 적색 — LOST
+_TRACK_TRAIL_COLOR = (0, 200, 100)  # 옅은 초록 — 궤적 점
+_TRACK_BOX_THICK  = 3
+_TRACK_TRAIL_R    = 3               # 궤적 점 반경 (px)
+_TRACK_FONT       = cv2.FONT_HERSHEY_SIMPLEX
+_TRACK_FONT_SCALE = 0.65
+_TRACK_FONT_THICK = 2
+
+
+def draw_track(
+    frame: np.ndarray,
+    box: tuple[int, int, int, int] | None,
+    ok: bool,
+    trail: list[tuple[int, int]],
+) -> None:
+    """
+    CSRT 추적 결과를 프레임에 in-place로 그린다.
+
+    Args:
+        frame : BGR 프레임.
+        box   : (x, y, w, h) 추적 박스. ok=False이면 None 허용.
+        ok    : True=추적 성공(초록), False=LOST(적색).
+        trail : 과거 중심 좌표 목록 [(cx, cy), ...]. 최신이 마지막.
+                config.VEHICLE["track_trail_len"] 개로 제한.
+
+    시각 요소:
+      - 박스: ok=True→초록, False→적색(점선 느낌의 얇은 박스).
+      - 라벨: "TRACKING (CSRT)" 또는 "LOST".
+      - 궤적: 최근 trail 점을 작은 원으로 표시.
+    """
+    from src import config as _cfg  # 지연 import로 순환 방지
+
+    # 1) 궤적 점 (trail) — 박스·라벨보다 먼저 그려 레이어 순서 유지
+    for cx, cy in trail:
+        cv2.circle(frame, (cx, cy), _TRACK_TRAIL_R, _TRACK_TRAIL_COLOR, -1)
+
+    # 2) 박스 + 라벨
+    # 기본값 — box가 None인 경우 또는 ok=False에도 좌표 정의
+    x, ly = 20, 80
+
+    if ok and box is not None:
+        x, y, w, h = box
+        cv2.rectangle(frame, (x, y), (x + w, y + h), _TRACK_OK_COLOR, _TRACK_BOX_THICK)
+        label = "TRACKING (CSRT)"
+        color = _TRACK_OK_COLOR
+        # 라벨: 박스 위에 표시 (화면 상단 밖으로 나가지 않도록 클램핑)
+        ly = max(y - 6, 18)
+    else:
+        label = "LOST"
+        color = _TRACK_LOST_COLOR
+        # LOST 시: 마지막 알려진 박스가 있으면 그 위치에 적색 박스
+        if box is not None:
+            x, y, w, h = box
+            cv2.rectangle(frame, (x, y), (x + w, y + h), _TRACK_LOST_COLOR, 1)
+            ly = max(y - 6, 18)
+        # box=None: 기본값 (x=20, ly=80) 사용
+
+    # 검정 외곽선 + 색상 텍스트
+    cv2.putText(frame, label, (x, ly), _TRACK_FONT, _TRACK_FONT_SCALE,
+                _BLACK, _TRACK_FONT_THICK + 1, cv2.LINE_AA)
+    cv2.putText(frame, label, (x, ly), _TRACK_FONT, _TRACK_FONT_SCALE,
+                color, _TRACK_FONT_THICK, cv2.LINE_AA)
+
+    # 3) 우하단 상태 태그
+    H, W = frame.shape[:2]
+    tag = f"L10 TRACK  {'OK' if ok else 'LOST'}"
+    fs = 0.50
+    (tw, _th), _ = cv2.getTextSize(tag, _TRACK_FONT, fs, 1)
+    tx = W - tw - 10
+    ty = H - 30
+    cv2.putText(frame, tag, (tx, ty), _TRACK_FONT, fs, _BLACK, 2, cv2.LINE_AA)
+    cv2.putText(frame, tag, (tx, ty), _TRACK_FONT, fs, color, 1, cv2.LINE_AA)

@@ -1,2 +1,5 @@
-opencv-python>=4.8
+# opencv-contrib-python은 opencv-python의 상위집합이다.
+# --vehicle-track 모드(L10 CSRT 추적)를 위해 opencv-contrib로 교체함.
+# opencv-python과 opencv-contrib-python을 동시에 설치하면 충돌 → 반드시 contrib만 설치.
+opencv-contrib-python>=4.13
 numpy>=1.24

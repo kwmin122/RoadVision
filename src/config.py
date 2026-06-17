@@ -257,6 +257,32 @@ VEHICLE = {
     "min_neighbors":     3,               # 3 → 7.1% 프레임 hit, 2 → FP 폭증
     "min_size":          (40, 40),        # 40px 이하 도로 균열 FP 억제
     "forward_roi_ratio": [(0.30, 0.55), (0.70, 1.00)],  # (좌상, 우하) 비율
+    #
+    # ── L10 CSRT 추적 데모 (--vehicle-track 플래그) ──
+    #
+    # track_seed: 클립별 seed 박스 (로직 아님, 데이터).
+    #   frame: seed 프레임 인덱스 (1-based).
+    #   box  : (x, y, w, h) — seed 프레임에서 타깃 차량의 바운딩 박스 (픽셀).
+    #
+    #   project_video — 흰색 승용차, 우측 차선. 프레임 200 (t=8s).
+    #     실측 검증: frame 200에서 육안으로 확인 + tracker.init 후 1060/1060 프레임
+    #     (frame 201~1260) 추적 성공, LOST 없음.
+    #     박스 (855, 355, 380, 165): 차량 앞범퍼~트렁크, 루프 포함, 배경 최소화.
+    #     Haar cascade가 이 박스 구간에서 클린 seed를 자동 반환하지 못해(ROI 범위 밖)
+    #     하드코딩 사용 — PLAN.md 규칙대로 "데이터, 로직 아님"으로 처리.
+    #
+    #   solidWhiteRight / solidYellowLeft — 차량이 짧게만 등장해 seed 미설정.
+    #     seed 없는 클립은 --vehicle-track 실행 시 경고만 출력하고 lane-only 출력.
+    "track_seed": {
+        "project_video": {
+            "frame": 200,
+            "box":   [855, 355, 380, 165],  # (x, y, w, h) — 흰 승용차, 우측 차선
+        },
+    },
+    #
+    # track_trail_len: CSRT 추적 궤적 저장 개수.
+    #   최근 trail_len 프레임의 중심 좌표를 원으로 표시 (10강 추적 시각화).
+    "track_trail_len": 30,
 }
 
 # --- 출력 ---

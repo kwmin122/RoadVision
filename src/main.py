@@ -45,6 +45,7 @@ from src import overlay as ov
 from src import birdeye
 from src import curve as curvemod
 from src import vehicle_bonus as vb
+from src import vehicle_track as vt
 
 
 def _roi_y_top(W: int, H: int, clip_key: str) -> int:
@@ -102,6 +103,17 @@ def parse_args() -> argparse.Namespace:
             "HUD에 'LDW DEMO -- drift simulated' 태그 표시."
         ),
     )
+    parser.add_argument(
+        "--vehicle-track",
+        action="store_true",
+        help=(
+            "L10 CSRT 차량 추적 데모 ON. "
+            "config.VEHICLE['track_seed']에 클립별 seed 박스를 등록해야 함. "
+            "출력: output/{clip}_track.mp4 (lane-only 덮어쓰지 않음). "
+            "lane 오버레이를 유지하면서 추적 박스·궤적을 위에 합성. "
+            "3개 검증 프레임: frames/track_{1,2,3}.png."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -122,6 +134,8 @@ def main() -> None:
         output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_vehicle.mp4")
     elif args.ldw_demo:
         output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_ldwdemo.mp4")
+    elif args.vehicle_track:
+        output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_track.mp4")
     else:
         output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_overlay.mp4")
     csv_path    = os.path.join(config.OUTPUT_DIR, f"{clip_key}_detect_log.csv")
@@ -191,6 +205,35 @@ def main() -> None:
               f"scale_factor={config.VEHICLE['scale_factor']}  "
               f"min_neighbors={config.VEHICLE['min_neighbors']}  "
               f"min_size={config.VEHICLE['min_size']}")
+
+    # ── L10 CSRT 추적 상태 (--vehicle-track 시에만 사용) ──────────────────────────
+    _track_tracker   = None          # CSRT tracker 인스턴스 (None = 아직 초기화 전)
+    _track_seeded    = False         # seed 완료 여부
+    _track_ok        = False         # 현재 프레임 추적 성공 여부
+    _track_box: tuple | None = None  # 현재 추적 박스 (x, y, w, h)
+    _track_trail: list[tuple[int, int]] = []   # 중심 좌표 이력
+    _track_trail_len = config.VEHICLE.get("track_trail_len", 30)
+    _track_ok_count  = 0             # 추적 성공 프레임 수 (집계용)
+    _track_total_after_seed = 0      # seed 이후 처리 프레임 수 (분모)
+    _track_first_loss: int | None = None  # 첫 LOST 프레임 번호
+    # 검증 프레임 저장: seed 이후 +10, +100, +300 프레임
+    _track_verify_offsets = {10, 100, 300}
+    _track_verify_saved: set[int] = set()
+    _track_verify_count = 0  # 저장된 검증 프레임 수 (최대 3)
+
+    if args.vehicle_track:
+        seed_entry = vt.seed_box(clip_key)
+        if seed_entry[0] == "auto":
+            print(f"[L10 TRACK] clip={clip_key}에 track_seed 미설정 — lane-only 출력.")
+            _track_seed_frame = None
+            _track_seed_box   = None
+        else:
+            _track_seed_frame, _track_seed_box = seed_entry
+            print(f"[L10 TRACK] CSRT 추적 모드 ON  "
+                  f"clip={clip_key}  seed_frame={_track_seed_frame}  box={_track_seed_box}")
+    else:
+        _track_seed_frame = None
+        _track_seed_box   = None
 
     # 디버그 프레임 저장 여부 추적
     saved_ldw_off   = False
@@ -531,6 +574,72 @@ def main() -> None:
                 print(f"  [M7] vehicle missed candidate: {missed_path}  frame={frames_read}")
         # ── M7 끝 ─────────────────────────────────────────────────────────────────
 
+        # ── L10 CSRT 차량 추적 (ADDITIVE, lane pipeline 불변) ─────────────────────
+        # 변경 대상: frame 픽셀(드로잉) + _track_* 상태.
+        # 변경 금지: smoother, dep_state, csv_rows, state_counts, curve_mode.
+        if args.vehicle_track and _track_seed_frame is not None:
+
+            # seed 프레임에서 추적기 초기화 (1회)
+            if not _track_seeded and frames_read == _track_seed_frame:
+                _track_tracker = vt.create_tracker()
+                vt.init_tracker(_track_tracker, frame, _track_seed_box)
+                _track_seeded = True
+                _track_ok    = True                          # seed 프레임 자체는 OK
+                _track_box   = tuple(_track_seed_box)
+                cx = _track_box[0] + _track_box[2] // 2
+                cy = _track_box[1] + _track_box[3] // 2
+                _track_trail.append((cx, cy))
+                print(f"  [L10 TRACK] seed 초기화 완료 frame={frames_read}  box={_track_box}")
+
+            elif _track_seeded and _track_tracker is not None:
+                # seed 이후: 매 프레임 추적기 갱신
+                _track_ok, _track_box = vt.update(_track_tracker, frame)
+                _track_total_after_seed += 1
+
+                if _track_ok:
+                    _track_ok_count += 1
+                    # 궤적 추가 (최대 trail_len개 유지)
+                    cx = _track_box[0] + _track_box[2] // 2
+                    cy = _track_box[1] + _track_box[3] // 2
+                    _track_trail.append((cx, cy))
+                    if len(_track_trail) > _track_trail_len:
+                        _track_trail.pop(0)
+                else:
+                    if _track_first_loss is None:
+                        _track_first_loss = frames_read
+                        print(f"  [L10 TRACK] LOST at frame={frames_read}  "
+                              f"tracked={_track_ok_count}/{_track_total_after_seed}")
+
+                # 검증 프레임 저장 (seed 이후 +10, +100, +300)
+                offset = frames_read - _track_seed_frame
+                if offset in _track_verify_offsets and offset not in _track_verify_saved:
+                    _track_verify_count += 1
+                    vpath = os.path.join(
+                        config.FRAMES_DIR, f"track_{_track_verify_count}.png"
+                    )
+                    # 현재 오버레이(lane + 추적박스 추가 전) 복사본에 박스 그리기
+                    verify_frame = frame.copy()
+                    ov.draw_track(verify_frame, _track_box, _track_ok,
+                                  list(_track_trail))
+                    # 추가: seed frame 번호와 현재 프레임 번호 표시
+                    cv2.putText(verify_frame,
+                                f"frame={frames_read}  seed={_track_seed_frame}  +{offset}",
+                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (0, 0, 0), 3, cv2.LINE_AA)
+                    cv2.putText(verify_frame,
+                                f"frame={frames_read}  seed={_track_seed_frame}  +{offset}",
+                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (255, 255, 255), 2, cv2.LINE_AA)
+                    cv2.imwrite(vpath, verify_frame)
+                    _track_verify_saved.add(offset)
+                    print(f"  [L10 TRACK] 검증 프레임 저장: {vpath}  "
+                          f"ok={_track_ok}  frame={frames_read}")
+
+            # 오버레이: 추적 박스 + 궤적 그리기 (lane overlay 위에)
+            if _track_seeded:
+                ov.draw_track(frame, _track_box, _track_ok, list(_track_trail))
+        # ── L10 CSRT 끝 ───────────────────────────────────────────────────────────
+
         writer.write(frame)
         frames_written += 1
 
@@ -590,6 +699,18 @@ def main() -> None:
         print(f"  누적 박스 수  : {_veh_total_boxes}  평균(hit프레임): {avg_boxes:.1f}")
         print(f"  sample 캡처   : {_veh_saved_samples}개  FP={_veh_saved_fp}  missed={_veh_saved_missed}")
         print("  ※ 이 수치는 Haar cascade 특성상 FP(오검)이 다수 포함됨. 정량 정확도 아님.")
+
+    # L10 CSRT 추적 집계 보고
+    if args.vehicle_track and _track_seed_frame is not None and _track_seeded:
+        track_rate = _track_ok_count / _track_total_after_seed * 100 if _track_total_after_seed else 0.0
+        print("\n=== L10 CSRT 차량 추적 집계 ===")
+        print(f"  clip        : {clip_key}")
+        print(f"  seed 프레임 : {_track_seed_frame}  box={_track_seed_box}")
+        print(f"  추적 성공   : {_track_ok_count}/{_track_total_after_seed}  ({track_rate:.1f}%)")
+        print(f"  첫 LOST     : {'없음 (전 구간 추적 성공)' if _track_first_loss is None else f'frame {_track_first_loss}'}")
+        print(f"  검증 프레임 : {_track_verify_count}개  (frames/track_{{1,2,3}}.png)")
+        print("  ※ seed 박스는 클립별 하드코딩. 검출(detection) 없이 추적(tracking)만 수행.")
+        print("  ※ CSRT 특성상 타깃이 프레임 밖으로 나가거나 심한 가림/스케일 변화 시 LOST 가능.")
 
     print("\n=== 처리 완료 ===")
     print(f"  입력 경로  : {input_path}")
