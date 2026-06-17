@@ -41,6 +41,22 @@ CANNY = {"low": 50, "high": 150, "aperture": 3}
 # 마스크 결합 전략: 기본 = color ∩ canny (PLAN §5-4). 폴백은 슬라이스에서 실험.
 MASK_COMBINE = "intersection"  # "intersection" | "union"
 
+# --- 모폴로지 클로징 (7강) — 파선 차선 검출 강화 ---
+# 파선 차선 문제: color ∩ Canny 교집합은 파선 interior(200~700px)를 버려 Hough 입력이
+# 희박(~70px)해지고 HoughLinesP가 0~1 선분만 반환 → fit_lane None (FIT_MIN_POINTS=4 미달).
+# 수정: color_mask에 모폴로지 클로징(파선 갭 브리지)을 적용한 뒤 팽창된 Canny와 AND.
+# 이렇게 하면 파선 갭이 이어지고 동시에 실제 엣지와 교집합을 취해 팬텀 차선을 방지.
+#
+# CLOSE_KERNEL_DASH: 수직 편향 커널 — (width=3, height=15).
+#   파선은 거의 수직이므로 세로로 긴 커널이 수직 갭을 닫으면서 가로 번짐을 최소화.
+#   height=15 기준: 실측 960×540 클립에서 파선 갭 브리지 충분, 도로 크랙 불검출 확인.
+CLOSE_KERNEL_DASH = (3, 15)  # (width, height) — cv2.getStructuringElement(MORPH_RECT, ...)
+
+# CANNY_DILATE_KERNEL: Canny 팽창용 커널 — (5×5) 정방형.
+#   클로징 후 color_mask와 AND 시 팽창된 Canny가 파선 body를 포함할 만큼 충분히 넓어야 함.
+#   5×5는 Canny 선 주변 ~2px 팽창 → 파선 body 포함 + 도로 내부 텍스처 미포함.
+CANNY_DILATE_KERNEL = (5, 5)  # (width, height) for dilating Canny edges before AND
+
 # --- ROI 사다리꼴 (해상도별 비율, 화면 하단 도로영역) ---  TODO-TUNE
 # (좌하, 좌상, 우상, 우하) 를 W,H 비율로. 실제 프레임 보고 조정.
 ROI_TRAPEZOID_RATIO = {

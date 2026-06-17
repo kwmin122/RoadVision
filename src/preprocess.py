@@ -63,16 +63,33 @@ def lane_mask(frame_bgr: np.ndarray) -> np.ndarray:
     """
     BGR 프레임 → Hough 입력용 차선 후보 마스크.
 
-    color_mask(흰+노랑)과 to_edges(Canny)를 config.MASK_COMBINE에 따라 결합:
-      "intersection" → bitwise_and (교집합, 기본값, PLAN §5-4)
-      "union"        → bitwise_or  (합집합, 폴백)
+    파선 차선 강화 파이프라인 (7강 모폴로지 클로징):
+      1. color_mask(흰+노랑)에 모폴로지 클로징(config.CLOSE_KERNEL_DASH) 적용.
+         수직 편향 커널이 파선 갭을 이어붙여 Hough가 연속 선분을 볼 수 있게 함.
+      2. Canny 엣지(to_edges)를 config.CANNY_DILATE_KERNEL로 팽창(dilate).
+         팽창된 Canny가 파선 body 영역을 포함하도록 확장.
+      3. 클로징된 color_mask ∩ 팽창된 Canny → AND.
+         실제 도로 엣지와 교집합을 취해 팬텀 차선 방지.
+
+    이 방식은 config.MASK_COMBINE 설정과 무관하게 항상 적용된다.
+    (config.MASK_COMBINE은 레거시 실험 변수로 유지되나 lane_mask 빌드에는 미사용.)
 
     반환: uint8 단채널 이미지 (0 또는 255), 입력과 동일한 H×W.
     """
     cmask = color_mask(frame_bgr)
     edges = to_edges(frame_bgr)
 
-    if config.MASK_COMBINE == "intersection":
-        return cv2.bitwise_and(cmask, edges)
-    else:
-        return cv2.bitwise_or(cmask, edges)
+    # 1. 파선 갭 브리지 — 수직 편향 클로징
+    close_k = cv2.getStructuringElement(
+        cv2.MORPH_RECT, config.CLOSE_KERNEL_DASH
+    )
+    closed = cv2.morphologyEx(cmask, cv2.MORPH_CLOSE, close_k)
+
+    # 2. Canny 팽창 — 파선 body를 포함할 만큼 확장
+    dil_k = cv2.getStructuringElement(
+        cv2.MORPH_RECT, config.CANNY_DILATE_KERNEL
+    )
+    dilated_edges = cv2.dilate(edges, dil_k, iterations=1)
+
+    # 3. AND — 실제 엣지 근방으로 제한 (팬텀 차선 방지)
+    return cv2.bitwise_and(closed, dilated_edges)
