@@ -41,6 +41,7 @@ from src import lane_detect
 from src.smoothing import LaneSmoother, VALID_STATES
 from src import departure as dep
 from src import overlay as ov
+from src import birdeye
 
 
 def _roi_y_top(W: int, H: int, clip_key: str) -> int:
@@ -57,7 +58,7 @@ def _roi_y_top(W: int, H: int, clip_key: str) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="RoadVision — Slice 5: LDW + drivable area overlay"
+        description="RoadVision — Slice 6: Bird-eye view (M5) + LDW + drivable area overlay"
     )
     parser.add_argument(
         "--clip",
@@ -75,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         "--debug-warn",
         action="store_true",
         help="ldw_off.png / ldw_on.png 생성 (경고 OFF/ON 디버그 프레임)",
+    )
+    parser.add_argument(
+        "--debug-birdeye",
+        action="store_true",
+        help="{clip}_birdeye_debug.png 생성 (원본+src 사다리꼴 | 탑다운 워프 나란히)",
     )
     return parser.parse_args()
 
@@ -135,8 +141,12 @@ def main() -> None:
     }
 
     # 디버그 프레임 저장 여부 추적
-    saved_ldw_off = False
-    saved_ldw_on  = False
+    saved_ldw_off   = False
+    saved_ldw_on    = False
+    saved_birdeye   = False
+
+    # bird-eye 디버그 프레임 번호: project_video는 직선 구간인 100번 프레임 사용
+    birdeye_debug_frame = 100 if clip_key == "project_video" else 130
 
     frames_read    = 0
     frames_written = 0
@@ -183,8 +193,15 @@ def main() -> None:
         # 8. 히스테리시스 경고 상태 갱신
         warning, side = dep_state.update(off)
 
-        # debug-warn용 원본 복사 (렌더링 전, ldw_on.png 합성에서만 사용)
-        frame_clean = frame.copy() if (args.debug_warn and frames_read == debug_frame_idx) else None
+        # debug-warn용 + birdeye-debug용 원본 복사 (렌더링 전)
+        need_clean_copy = (
+            (args.debug_warn and frames_read == debug_frame_idx)
+            or (args.debug_birdeye and frames_read == birdeye_debug_frame and not saved_birdeye)
+        )
+        frame_clean = frame.copy() if need_clean_copy else None
+
+        # Bird-eye 워프 — render_frame 전에 깨끗한 원본 프레임에서 계산 (오버레이 없는 탑다운)
+        warped_frame = birdeye.warp(frame, clip_key)
 
         # 9. 오버레이 합성 (in-place)
         ov.render_frame(
@@ -196,6 +213,9 @@ def main() -> None:
             len(segments),
             left_state, right_state,
         )
+
+        # Bird-eye PiP 합성 (render_frame 이후, 오버레이된 프레임 우상단에 삽입)
+        ov.draw_birdeye_pip(frame, warped_frame)
 
         # 10. 디버그 프레임 저장
         if frames_read == debug_frame_idx:
@@ -245,6 +265,33 @@ def main() -> None:
                 cv2.imwrite(os.path.join(config.FRAMES_DIR, "ldw_on.png"), synth_frame)
                 saved_ldw_on = True
                 print(f"  [debug-warn] ldw_on.png 저장 (frame={frames_read}, synth_off=1.0, side=RIGHT)")
+
+        # --debug-birdeye: birdeye_debug_frame에서 side-by-side 디버그 이미지 저장.
+        # 좌: 원본 프레임(frame_clean)에 src 사다리꼴(초록 폴리라인) 그린 것.
+        # 우: 탑다운 워프된 이미지 (warped_frame — 오버레이 전 원본에서 워프됨).
+        if args.debug_birdeye and frames_read == birdeye_debug_frame and not saved_birdeye:
+            if frame_clean is not None:
+                # src 사다리꼴 그리기 (BGR 초록)
+                debug_src = frame_clean.copy()
+                src_pts = np.array(config.BIRDEYE[clip_key]["src"], dtype=np.int32)
+                # tl→tr→br→bl 순 — 닫힌 폴리라인
+                cv2.polylines(debug_src, [src_pts], isClosed=True,
+                              color=(0, 255, 0), thickness=3)
+                # 꼭짓점 레이블
+                labels = ["TL", "TR", "BR", "BL"]
+                for (px, py), lbl in zip(config.BIRDEYE[clip_key]["src"], labels):
+                    cv2.circle(debug_src, (px, py), 6, (0, 255, 0), -1)
+                    cv2.putText(debug_src, lbl, (px + 8, py - 8),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+                # side-by-side: [원본+사다리꼴] | [탑다운 워프]
+                side_by_side = np.hstack([debug_src, warped_frame])
+
+                debug_path = os.path.join(config.FRAMES_DIR,
+                                          f"{clip_key}_birdeye_debug.png")
+                cv2.imwrite(debug_path, side_by_side)
+                saved_birdeye = True
+                print(f"  [debug-birdeye] {debug_path} 저장 (frame={frames_read})")
 
         writer.write(frame)
         frames_written += 1

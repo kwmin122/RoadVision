@@ -93,12 +93,40 @@ LDW = {
                              # 0.75: 빨강 배너가 선명하면서도 하단 영상이 약간 비침
 }
 
-# --- Bird-eye homography (9강) ---  TODO-TUNE: 클립별 4점 직접 확정
-# src=원근 도로 사다리꼴 4점, dst=탑다운 직사각 4점. (x,y) 픽셀.
+# --- Bird-eye homography (9강) ---
+# src: ROI 사다리꼴 4점 (tl, tr, br, bl) — ROI_TRAPEZOID_RATIO에서 직접 유도.
+#   960×540: tl=(0.43×960, 0.62×540)=(412,334), tr=(0.57×960, 0.62×540)=(547,334),
+#            br=(0.95×960, 1.00×540)=(912,540), bl=(0.10×960, 1.00×540)=(96,540)
+#   1280×720: tl=(0.45×1280, 0.64×720)=(576,461), tr=(0.58×1280, 0.64×720)=(742,461),
+#             br=(0.92×1280, 1.00×720)=(1178,720), bl=(0.12×1280, 1.00×720)=(154,720)
+# dst: 25% 수평 여백을 둔 탑다운 직사각형 (차선이 수직·평행하게 펼쳐짐).
+#   960×540: 좌=240(=0.25×960), 우=720(=0.75×960)
+#   1280×720: 좌=320(=0.25×1280), 우=960(=0.75×1280)
 BIRDEYE = {
-    "solidYellowLeft": {"src": None, "dst": None},   # TODO-TUNE
-    "solidWhiteRight": {"src": None, "dst": None},    # TODO-TUNE
-    "project_video":   {"src": None, "dst": None},    # TODO-TUNE
+    "solidYellowLeft": {
+        "src": [(412, 334), (547, 334), (912, 540), (96, 540)],  # tl, tr, br, bl
+        "dst": [(240, 0),   (720, 0),   (720, 540), (240, 540)],
+    },
+    "solidWhiteRight": {
+        "src": [(412, 334), (547, 334), (912, 540), (96, 540)],  # same res/ROI
+        "dst": [(240, 0),   (720, 0),   (720, 540), (240, 540)],
+    },
+    "project_video": {
+        "src": [(576, 461), (742, 461), (1178, 720), (154, 720)],  # tl, tr, br, bl
+        "dst": [(320, 0),   (960, 0),   (960, 720),  (320, 720)],
+    },
+}
+
+# Bird-eye PiP (Picture-in-Picture) 설정
+# PIP_WIDTH_RATIO: 원본 프레임 폭 대비 PiP 패널 폭 비율. 0.30 = 30%.
+# PIP_BORDER: PiP 테두리 두께 (px).
+# PIP_TOP_OFFSET: 배너와 겹침 방지를 위해 상단에서 띄우는 픽셀.
+BIRDEYE_PIP = {
+    "width_ratio":  0.30,   # 프레임 폭의 30% 크기로 PiP 축소
+    "border_px":    2,      # 테두리 두께 (px)
+    "top_offset":   55,     # LDW 배너 아래부터 시작 (banner_height=50보다 5px 아래)
+    "border_color": (255, 255, 255),  # 테두리 색 BGR (흰색)
+    "label_color":  (255, 255, 255),  # 레이블 텍스트 색 BGR
 }
 
 # --- 곡선 슬라이딩 윈도우 (M6, project_video) ---  TODO-TUNE

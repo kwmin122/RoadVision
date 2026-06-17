@@ -193,6 +193,77 @@ def draw_hud(
         cv2.putText(frame, text, (x0, y), font, font_scale, color,  thickness,     cv2.LINE_AA)
 
 
+def draw_birdeye_pip(
+    frame: np.ndarray,
+    warped: np.ndarray,
+) -> None:
+    """
+    Bird-eye 탑다운 뷰를 프레임 우상단에 PiP(Picture-in-Picture)로 합성한다 (in-place).
+
+    레이아웃:
+      - 폭: config.BIRDEYE_PIP["width_ratio"] × frame.W
+      - 위치: 우상단, LDW 배너 아래 (top_offset)
+      - 테두리: border_px 두께의 흰 사각형
+      - 레이블: "BIRD-EYE" (소형 텍스트, 패널 좌하단)
+
+    Args:
+        frame  : 출력 프레임 (BGR, in-place 수정).
+        warped : birdeye.warp()로 생성된 탑다운 BGR 이미지.
+    """
+    pip_cfg = config.BIRDEYE_PIP
+    H, W = frame.shape[:2]
+
+    # PiP 축소 크기 계산 (종횡비 유지)
+    pip_w = int(W * pip_cfg["width_ratio"])
+    pip_h = int(pip_w * H / W)  # 원본과 동일 종횡비
+
+    top_offset = pip_cfg["top_offset"]
+    border     = pip_cfg["border_px"]
+
+    # 우상단 좌표 (테두리 포함)
+    x1 = W - pip_w - border
+    y1 = top_offset
+    x2 = W - border
+    y2 = y1 + pip_h
+
+    # 범위 체크 — 프레임 바깥으로 나가면 클램핑
+    y2 = min(y2, H)
+    pip_h_actual = y2 - y1
+    pip_w_actual = x2 - x1
+
+    if pip_w_actual <= 0 or pip_h_actual <= 0:
+        return
+
+    # warped 축소
+    small = cv2.resize(warped, (pip_w_actual, pip_h_actual))
+    frame[y1:y2, x1:x2] = small
+
+    # 테두리 (흰색 사각형)
+    bx1 = x1 - border
+    by1 = y1 - border
+    bx2 = x2 + border
+    by2 = y2 + border
+    cv2.rectangle(
+        frame,
+        (max(bx1, 0), max(by1, 0)),
+        (min(bx2, W - 1), min(by2, H - 1)),
+        pip_cfg["border_color"],
+        border,
+    )
+
+    # "BIRD-EYE" 레이블 (패널 좌하단 안쪽)
+    label      = "BIRD-EYE"
+    font       = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45
+    thickness  = 1
+    (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
+    lx = x1 + 4
+    ly = y2 - 6
+    # 검정 외곽선으로 가독성 확보
+    cv2.putText(frame, label, (lx, ly), font, font_scale, _BLACK,              thickness + 1, cv2.LINE_AA)
+    cv2.putText(frame, label, (lx, ly), font, font_scale, pip_cfg["label_color"], thickness,     cv2.LINE_AA)
+
+
 def render_frame(
     frame: np.ndarray,
     left_fit: tuple[int, int] | None,
