@@ -162,9 +162,29 @@ CURVE_VALIDITY = {
     "y_sample_count":      50,     # 폴리 평가 샘플 수 (유효성 + 포인트 생성 공용)
 }
 
-# --- 차량 보너스 (M7, forward-ROI Haar) ---  TODO-TUNE
-VEHICLE = {"cascade_path": None, "scale_factor": 1.1, "min_neighbors": 3,
-           "forward_roi_ratio": [(0.30, 0.55), (0.70, 1.00)]}  # (좌상, 우하) 비율
+# --- 차량 보너스 (M7, forward-ROI Haar) ---
+# cascade_path: OpenCV 공식 Haar 자동차 cascade (전면/후면 뷰).
+# scale_factor: 1.1 = 10% 축소 스텝. 느릴수록 정밀, 빠를수록 FP 증가.
+#   → 1.05로 낮추면 더 많은 후보 나오나 FP 급증, 1.1이 FP/miss 균형점.
+# min_neighbors: 3 = 같은 오브젝트에서 최소 겹침 횟수. 낮출수록 FP 증가.
+#   → 2로 낮추면 ~41% 프레임에서 박스 뜨지만 대부분 road texture FP.
+#   → 3이 실험 결과 균형점 (project_video에서 ~7% 프레임, 실제 차량 구간 포함).
+# min_size: (40, 40) = 후보 박스 최소 크기 (px).
+#   이동 카메라에서 먼 차량은 40×40 안팎. 20px 이하는 도로 균열 FP 증가.
+# forward_roi_ratio: 전방 ROI [(좌상 x비율, y비율), (우하 x비율, y비율)].
+#   x=0.30~0.70: 수평 중앙 40%만 탐색 (갓길·가드레일 FP 억제).
+#   y=0.55~1.00: 수직 하단 45%만 탐색 (하늘·신호등 FP 제거).
+#   1280×720 기준 → x=[384,896], y=[396,720] (512×324 px 서브이미지).
+# BEFORE (초기값): cascade_path=None, scale_factor=1.1, min_neighbors=3, min_size 없음
+# AFTER  (튜닝값): cascade_path="models/cars.xml", min_size=(40,40) 추가,
+#                  forward_roi_ratio 동일 유지 (실측으로 차량 포함 확인)
+VEHICLE = {
+    "cascade_path":      "models/cars.xml",
+    "scale_factor":      1.1,              # 기본 1.1 — FP/miss 균형
+    "min_neighbors":     3,               # 3 → 7.1% 프레임 hit, 2 → FP 폭증
+    "min_size":          (40, 40),        # 40px 이하 도로 균열 FP 억제
+    "forward_roi_ratio": [(0.30, 0.55), (0.70, 1.00)],  # (좌상, 우하) 비율
+}
 
 # --- 출력 ---
 OUTPUT_DIR = "output"

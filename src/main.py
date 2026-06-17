@@ -43,6 +43,7 @@ from src import departure as dep
 from src import overlay as ov
 from src import birdeye
 from src import curve as curvemod
+from src import vehicle_bonus as vb
 
 
 def _roi_y_top(W: int, H: int, clip_key: str) -> int:
@@ -83,6 +84,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="{clip}_birdeye_debug.png 생성 (원본+src 사다리꼴 | 탑다운 워프 나란히)",
     )
+    parser.add_argument(
+        "--vehicle",
+        action="store_true",
+        help="M7 보너스: 전방 차량 후보 시각화 실험 ON (기본=OFF). "
+             "출력: {clip}_vehicle.mp4 (lane-only 출력 덮어쓰지 않음).",
+    )
     return parser.parse_args()
 
 
@@ -98,7 +105,11 @@ def main() -> None:
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.FRAMES_DIR, exist_ok=True)
 
-    output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_overlay.mp4")
+    # M7: vehicle 모드는 별도 출력 파일 (lane-only 결과 덮어쓰기 방지)
+    if args.vehicle:
+        output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_vehicle.mp4")
+    else:
+        output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_overlay.mp4")
     csv_path    = os.path.join(config.OUTPUT_DIR, f"{clip_key}_detect_log.csv")
 
     # 캡처 열기
@@ -143,6 +154,19 @@ def main() -> None:
 
     # M6 곡선 모드 카운터 (CURVE / fallback 프레임 수 집계)
     curve_frame_counts = {"CURVE": 0, "STRAIGHT(fallback)": 0}
+
+    # M7 차량 보너스 상태 (vehicle 플래그 ON 시에만 사용)
+    _prev_gray: np.ndarray | None = None   # optical flow용 직전 프레임 gray
+    _veh_frames_with_boxes = 0             # 박스가 1개 이상 뜬 프레임 수
+    _veh_total_boxes       = 0             # 누적 박스 수
+    _veh_saved_samples     = 0            # 캡처된 샘플 프레임 수
+    _veh_saved_fp          = False         # FP 샘플 저장 여부
+    _veh_saved_missed      = False         # missed 샘플 저장 여부
+    if args.vehicle:
+        print(f"[M7] 차량 보너스 모드 ON  cascade={config.VEHICLE['cascade_path']}  "
+              f"scale_factor={config.VEHICLE['scale_factor']}  "
+              f"min_neighbors={config.VEHICLE['min_neighbors']}  "
+              f"min_size={config.VEHICLE['min_size']}")
 
     # 디버그 프레임 저장 여부 추적
     saved_ldw_off   = False
@@ -365,6 +389,62 @@ def main() -> None:
                 saved_birdeye = True
                 print(f"  [debug-birdeye] {debug_path} 저장 (frame={frames_read})")
 
+        # ── M7 차량 보너스 (ADDITIVE 레이어, lane pipeline 변수 불변) ─────────────
+        # 이 블록은 args.vehicle 플래그 ON 시에만 실행된다.
+        # 변경 대상: frame 픽셀(드로잉) + _prev_gray(옵티컬플로 버퍼) + 통계 변수.
+        # 변경 금지: smoother, dep_state, csv_rows, state_counts, curve_mode.
+        if args.vehicle:
+            # grayscale 계산 (flow용 + cascade 내부용 공용)
+            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # 1) Haar cascade 후보 검출
+            veh_boxes = vb.detect_candidates(frame, clip_key)
+            n_boxes   = len(veh_boxes)
+            if n_boxes > 0:
+                _veh_frames_with_boxes += 1
+                _veh_total_boxes       += n_boxes
+
+            # 2) 박스 + ROI 경계 + HUD 태그 그리기 (차선 오버레이 위에 마지막으로)
+            vb.draw_roi_boundary(frame)
+            vb.draw_candidates(frame, veh_boxes)
+            vb.draw_vehicle_hud_tag(frame, n_boxes)
+
+            # 3) 광류 히트맵 (이전 프레임이 있을 때만)
+            if _prev_gray is not None:
+                flow_mag = vb.compute_flow_magnitude(
+                    _prev_gray, curr_gray, (height, width)
+                )
+                vb.draw_flow_heatmap(frame, flow_mag, (height, width))
+
+            _prev_gray = curr_gray  # 다음 프레임용 보존
+
+            # 4) 샘플 프레임 캡처 (vehicle_{n}.png — 박스 있는 프레임)
+            if _veh_saved_samples < 3 and n_boxes > 0:
+                sample_path = os.path.join(
+                    config.FRAMES_DIR, f"vehicle_{frames_read}.png"
+                )
+                cv2.imwrite(sample_path, frame)
+                _veh_saved_samples += 1
+                print(f"  [M7] vehicle sample: {sample_path}  boxes={n_boxes}")
+
+            # 5) FP 캡처: 박스가 뜨는 두 번째 hit 프레임 저장.
+            #    첫 번째 hit 이후의 프레임으로 FP 예시를 보존 (두 개의 독립 샘플).
+            #    실제로 boxes 좌표가 도로 질감/소실점에 걸리는지는 frames/vehicle_fp.png로 육안 확인.
+            if not _veh_saved_fp and n_boxes > 0 and _veh_saved_samples >= 2:
+                fp_path = os.path.join(config.FRAMES_DIR, "vehicle_fp.png")
+                cv2.imwrite(fp_path, frame)
+                _veh_saved_fp = True
+                print(f"  [M7] vehicle FP candidate: {fp_path}  frame={frames_read}")
+
+            # 6) missed 캡처: 박스 0개인 프레임 (100번 이후, 안정 구간에서 한 번만 저장).
+            #    실제 차량이 있을지는 육안으로 vehicle_missed.png 확인 필요.
+            if not _veh_saved_missed and n_boxes == 0 and frames_read > 100:
+                missed_path = os.path.join(config.FRAMES_DIR, "vehicle_missed.png")
+                cv2.imwrite(missed_path, frame)
+                _veh_saved_missed = True
+                print(f"  [M7] vehicle missed candidate: {missed_path}  frame={frames_read}")
+        # ── M7 끝 ─────────────────────────────────────────────────────────────────
+
         writer.write(frame)
         frames_written += 1
 
@@ -410,6 +490,20 @@ def main() -> None:
     for mode_name, cnt in curve_frame_counts.items():
         pct = cnt / frames_read * 100 if frames_read else 0.0
         print(f"  {mode_name:25s}: {cnt:5d}프레임 ({pct:.1f}%)")
+
+    # M7 차량 보너스 집계 보고
+    if args.vehicle:
+        hit_rate = _veh_frames_with_boxes / frames_read * 100 if frames_read else 0.0
+        avg_boxes = _veh_total_boxes / _veh_frames_with_boxes if _veh_frames_with_boxes else 0.0
+        print("\n=== M7 차량 후보 실험 집계 ===")
+        print(f"  cascade 파라미터: scale_factor={config.VEHICLE['scale_factor']}  "
+              f"min_neighbors={config.VEHICLE['min_neighbors']}  "
+              f"min_size={config.VEHICLE['min_size']}")
+        print(f"  전방 ROI: {config.VEHICLE['forward_roi_ratio']}")
+        print(f"  박스 ≥1 프레임: {_veh_frames_with_boxes}/{frames_read} ({hit_rate:.1f}%)")
+        print(f"  누적 박스 수  : {_veh_total_boxes}  평균(hit프레임): {avg_boxes:.1f}")
+        print(f"  sample 캡처   : {_veh_saved_samples}개  FP={_veh_saved_fp}  missed={_veh_saved_missed}")
+        print("  ※ 이 수치는 Haar cascade 특성상 FP(오검)이 다수 포함됨. 정량 정확도 아님.")
 
     print("\n=== 처리 완료 ===")
     print(f"  입력 경로  : {input_path}")
