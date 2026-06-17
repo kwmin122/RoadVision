@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import time
 
@@ -90,6 +91,17 @@ def parse_args() -> argparse.Namespace:
         help="M7 보너스: 전방 차량 후보 시각화 실험 ON (기본=OFF). "
              "출력: {clip}_vehicle.mp4 (lane-only 출력 덮어쓰지 않음).",
     )
+    parser.add_argument(
+        "--ldw-demo",
+        action="store_true",
+        help=(
+            "LDW 데모 모드: 스크립트 드리프트를 오프셋에 주입해 "
+            "SAFE→CAUTION→DANGER(LEFT)→SAFE→DANGER(RIGHT)→SAFE 사이클을 시연. "
+            "실제 경로는 변경 없음(시뮬레이션). "
+            "출력: {clip}_ldwdemo.mp4 (lane-only 덮어쓰지 않음). "
+            "HUD에 'LDW DEMO -- drift simulated' 태그 표시."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -105,9 +117,11 @@ def main() -> None:
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.FRAMES_DIR, exist_ok=True)
 
-    # M7: vehicle 모드는 별도 출력 파일 (lane-only 결과 덮어쓰기 방지)
+    # 출력 파일 경로 — 모드별로 분리 (lane-only 덮어쓰기 방지)
     if args.vehicle:
         output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_vehicle.mp4")
+    elif args.ldw_demo:
+        output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_ldwdemo.mp4")
     else:
         output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_overlay.mp4")
     csv_path    = os.path.join(config.OUTPUT_DIR, f"{clip_key}_detect_log.csv")
@@ -142,6 +156,9 @@ def main() -> None:
     # 스무더 + 이탈 상태 초기화
     smoother  = LaneSmoother()
     dep_state = dep.DepartureState()
+
+    # LDW 데모 모드: 3-state 대표 프레임 저장 추적
+    demo_saved: dict[str, bool] = {"SAFE": False, "CAUTION": False, "DANGER": False}
 
     # CSV 버퍼
     csv_rows: list[tuple[int, str, str]] = []
@@ -219,8 +236,30 @@ def main() -> None:
         # 7. LDW 오프셋 계산
         off = dep.offset(smoothed_left, smoothed_right, W)
 
+        # 7b. LDW DEMO 드리프트 주입 (--ldw-demo 시에만, off가 None이 아닐 때만)
+        # 실제 CSV·smoother·state_counts는 7 이전에 모두 기록됨 → 무변경 보장.
+        # 드리프트: 사인파. amplitude × sin(2π × frame / period)
+        #   frame 0~period/4 : 0 → +amplitude (RIGHT caution→danger)
+        #   frame period/4~period/2: +amplitude → 0 (safe)
+        #   frame period/2~3period/4: 0 → -amplitude (LEFT danger)
+        #   frame 3period/4~period: -amplitude → 0 (safe)
+        # 부호: 음수=LEFT 이탈, 양수=RIGHT 이탈 (departure.py 규약)
+        # 실제 off는 미세하므로 drift가 상태 전환을 주도함.
+        _demo_drift_off = off  # 데모/일반 분기 후 동일 변수명 유지
+        if args.ldw_demo and off is not None:
+            amp    = config.LDW["demo_drift_amplitude"]
+            period = config.LDW["demo_drift_period_frames"]
+            # 부호: 음수 먼저 → LEFT DANGER 먼저, 양수 → RIGHT DANGER (task 시퀀스)
+            drift  = -amp * math.sin(2 * math.pi * frames_read / period)
+            _demo_drift_off = off + drift
+
         # 8. 히스테리시스 경고 상태 갱신
-        warning, side = dep_state.update(off)
+        # 데모 모드: 드리프트 적용된 오프셋으로 경고 판단
+        # 일반 모드: 실제 off 그대로 (기존 동작 100% 유지)
+        if args.ldw_demo:
+            warning, side = dep_state.update(_demo_drift_off)
+        else:
+            warning, side = dep_state.update(off)
 
         # debug-warn용 + birdeye-debug용 원본 복사 (렌더링 전)
         need_clean_copy = (
@@ -273,14 +312,34 @@ def main() -> None:
         # ── M6 끝 ──────────────────────────────────────────────────────────────────
 
         # 9. 오버레이 합성 (in-place)
+        # 데모 모드에서는 드리프트 오프셋(_demo_drift_off)으로 3-state 계산.
+        # 일반 모드에서는 실제 off로 계산 (SAFE/CAUTION/DANGER 상태 없는 원래 동작과 동일).
+        _off_for_display = _demo_drift_off if args.ldw_demo else off
+        lane_st = dep.lane_state(_off_for_display, warning)
+
+        # LDW 데모: 3-state 대표 프레임 저장 (처음 만나는 각 상태에서 1회)
+        if args.ldw_demo and not all(demo_saved.values()):
+            if not demo_saved[lane_st]:
+                state_frame_path = os.path.join(
+                    config.FRAMES_DIR, f"ldw_{lane_st.lower()}.png"
+                )
+                # 렌더링 전 원본 복사본을 저장하려면 렌더링 후 저장 (오버레이 포함)
+                # → 렌더링 완료 후 아래에서 저장 플래그만 세팅 (실제 저장은 렌더 후)
+                _demo_save_state = lane_st
+            else:
+                _demo_save_state = None
+        else:
+            _demo_save_state = None
+
         if curve_mode == "CURVE" and curve_polygon is not None:
             # CURVE 모드: 곡선 drivable area + 곡선 차선선 먼저, 배너+HUD는 render_frame
-            ov.draw_curved_area(frame, curve_polygon, curve_left, curve_right)
+            ov.draw_curved_area(frame, curve_polygon, curve_left, curve_right,
+                                lane_st=lane_st)
             ov.render_frame(
                 frame,
                 smoothed_left, smoothed_right,
                 y_bottom, y_top,
-                off, warning, side,
+                _off_for_display, warning, side,
                 frames_read, total,
                 len(segments),
                 left_state, right_state,
@@ -288,6 +347,8 @@ def main() -> None:
                 draw_lines=False,       # 직선 차선선 스킵 (곡선으로 대체)
                 curve_mode=curve_mode,
                 curvature_r=curvature_r,
+                lane_st=lane_st,
+                demo=args.ldw_demo,
             )
         else:
             # STRAIGHT(fallback) 모드: 기존 직선 파이프라인 그대로
@@ -295,11 +356,26 @@ def main() -> None:
                 frame,
                 smoothed_left, smoothed_right,
                 y_bottom, y_top,
-                off, warning, side,
+                _off_for_display, warning, side,
                 frames_read, total,
                 len(segments),
                 left_state, right_state,
                 curve_mode=curve_mode,  # "STRAIGHT(fallback)" 또는 None
+                lane_st=lane_st,
+                demo=args.ldw_demo,
+            )
+
+        # LDW 데모: 렌더 완료 후 대표 프레임 저장
+        if _demo_save_state is not None and not demo_saved[_demo_save_state]:
+            state_frame_path = os.path.join(
+                config.FRAMES_DIR, f"ldw_{_demo_save_state.lower()}.png"
+            )
+            cv2.imwrite(state_frame_path, frame)
+            demo_saved[_demo_save_state] = True
+            off_disp = f"{_off_for_display:.4f}" if _off_for_display is not None else "N/A"
+            print(
+                f"  [ldw-demo] {_demo_save_state} 프레임 저장: {state_frame_path}"
+                f"  (frame={frames_read}, drift_off={off_disp})"
             )
 
         # Bird-eye PiP 합성 (render_frame 이후, 오버레이된 프레임 우상단에 삽입)

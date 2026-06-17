@@ -1,18 +1,23 @@
 """
-오버레이 렌더링 모듈 — Slice 5 (M4): 주행영역 폴리곤 + 차선선 + LDW 경고 + HUD.
+오버레이 렌더링 모듈 — 3-state LDW 위험 시각화 (SAFE/CAUTION/DANGER) 포함.
 
 구성:
-  draw_drivable_area()  : 좌우 차선 사이 초록 반투명 폴리곤
-  draw_lane_lines_ldw() : 차선선 (경고 ON 시 이탈 측 빨강으로 강조)
-  draw_ldw_banner()     : 경고 ON 시 상단 빨강 배너 + 텍스트
+  draw_drivable_area()  : 좌우 차선 사이 반투명 폴리곤 (상태 색상 반영)
+  draw_lane_lines_ldw() : 차선선 (경고 ON 시 이탈 측 빨강·두꺼운 선 강조)
+  draw_ldw_banner()     : 경고 ON 시 상단 빨강 배너 + 텍스트  ← SAFE에서 기존 동작 유지
   draw_hud()            : 오프셋 수치 + 경고 상태 텍스트 HUD
-  render_frame()        : 위 4가지를 순서대로 합성 (외부 호출 진입점)
+  draw_danger_border()  : DANGER 시 프레임 전체 두꺼운 플래시 테두리
+  draw_caution_strip()  : CAUTION 시 상단 황색 좁은 띠 + 텍스트
+  draw_danger_banner()  : DANGER 시 대형 중앙 배너 ("⚠ 차선 이탈 / LANE DEPARTURE")
+  draw_drift_arrow()    : DANGER 시 이탈 방향 화살표
+  draw_offset_gauge()   : 공통 하단 오프셋 게이지 (색상은 상태별)
+  render_frame()        : 위를 순서대로 합성 (외부 호출 진입점, 하위 호환)
 
 색상 상수 (BGR):
-  GREEN_FILL  = (0, 200, 0)  — 주행영역 폴리곤 채움색
-  GREEN_LINE  = (0, 255, 0)  — 정상 차선선
-  RED_LINE    = (0, 0, 255)  — 경고 시 이탈 차선선
-  RED_BANNER  = (0, 0, 200)  — 경고 배너 배경
+  GREEN_FILL  = (0, 200, 0)   — SAFE 주행영역 채움 (기존 동일)
+  GREEN_LINE  = (0, 255, 0)   — 정상 차선선
+  RED_LINE    = (0, 0, 255)   — DANGER 이탈 차선선
+  RED_BANNER  = (0, 0, 200)   — 경고 배너 배경
   WHITE_TEXT  = (255, 255, 255) — 텍스트 전경
   YELLOW_HUD  = (0, 220, 255)  — HUD 수치 강조
 
@@ -43,16 +48,25 @@ def draw_drivable_area(
     right_fit: tuple[int, int],
     y_bottom: int,
     y_top: int,
+    lane_st: str = "SAFE",
 ) -> None:
     """
-    좌우 차선 피팅 사이의 주행가능 영역을 반투명 초록 폴리곤으로 채운다 (in-place).
+    좌우 차선 피팅 사이의 주행가능 영역을 반투명 폴리곤으로 채운다 (in-place).
 
     폴리곤 꼭짓점 순서 (시계 방향):
       left_bottom → left_top → right_top → right_bottom
 
+    lane_st: "SAFE"(초록) | "CAUTION"(황색) | "DANGER"(적색)
     fill_alpha: config.LDW["fill_alpha"] (0.0~1.0).
     """
     alpha = config.LDW["fill_alpha"]
+
+    if lane_st == "DANGER":
+        fill_color = config.LDW["danger_fill"]
+    elif lane_st == "CAUTION":
+        fill_color = config.LDW["caution_fill"]
+    else:
+        fill_color = _GREEN_FILL
 
     lx_bot, lx_top = left_fit
     rx_bot, rx_top = right_fit
@@ -65,7 +79,7 @@ def draw_drivable_area(
     ], dtype=np.int32)
 
     overlay = frame.copy()
-    cv2.fillPoly(overlay, [pts], _GREEN_FILL)
+    cv2.fillPoly(overlay, [pts], fill_color)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
 
@@ -79,28 +93,35 @@ def draw_lane_lines_ldw(
     side: str | None,
 ) -> None:
     """
-    좌/우 차선선을 그린다. 경고 ON 시 이탈 방향 차선을 빨간색으로 강조.
+    좌/우 차선선을 그린다. DANGER ON 시 이탈 방향 차선을 빨간색+두꺼운 선으로 강조.
 
-    warning=True, side="LEFT"  → 왼쪽 차선선 빨강
-    warning=True, side="RIGHT" → 오른쪽 차선선 빨강
+    warning=True, side="LEFT"  → 왼쪽 차선선 빨강+두꺼움
+    warning=True, side="RIGHT" → 오른쪽 차선선 빨강+두꺼움
     그 외 → 양쪽 모두 초록
     """
+    danger_thick = config.LDW["danger_line_thick"]
+
     def _color(lane_side: str) -> tuple[int, int, int]:
         if warning and side == lane_side:
             return _RED_LINE
         return _GREEN_LINE
 
+    def _thick(lane_side: str) -> int:
+        if warning and side == lane_side:
+            return danger_thick
+        return _LINE_THICKNESS
+
     if left_fit is not None:
         lx_bot, lx_top = left_fit
         cv2.line(frame,
                  (lx_bot, y_bottom), (lx_top, y_top),
-                 _color("LEFT"), _LINE_THICKNESS, lineType=cv2.LINE_AA)
+                 _color("LEFT"), _thick("LEFT"), lineType=cv2.LINE_AA)
 
     if right_fit is not None:
         rx_bot, rx_top = right_fit
         cv2.line(frame,
                  (rx_bot, y_bottom), (rx_top, y_top),
-                 _color("RIGHT"), _LINE_THICKNESS, lineType=cv2.LINE_AA)
+                 _color("RIGHT"), _thick("RIGHT"), lineType=cv2.LINE_AA)
 
 
 def draw_ldw_banner(
@@ -112,6 +133,8 @@ def draw_ldw_banner(
 
     배너 높이: config.LDW["banner_height"] (px).
     표시 텍스트: "LANE DEPARTURE → LEFT" 또는 "LANE DEPARTURE → RIGHT".
+
+    NOTE: DANGER 상태에서는 draw_danger_banner()가 이 배너를 대체한다.
     """
     H, W = frame.shape[:2]
     bh = config.LDW["banner_height"]
@@ -136,6 +159,196 @@ def draw_ldw_banner(
     cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE,  thickness,     cv2.LINE_AA)
 
 
+def draw_caution_strip(frame: np.ndarray) -> None:
+    """
+    CAUTION 상태: 상단 황색 좁은 띠 + "차선 근접 / LANE PROXIMITY" 텍스트 (in-place).
+    """
+    H, W = frame.shape[:2]
+    sh = config.LDW["caution_strip_h"]
+    bg_color = config.LDW["caution_strip_color"]
+
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (W, sh), bg_color, -1)
+    cv2.addWeighted(overlay, 0.80, frame, 0.20, 0, frame)
+
+    text = "  LANE PROXIMITY  /  CAUTION  "
+    font      = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 0.75
+    thickness  = 2
+
+    (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+    tx = (W - tw) // 2
+    ty = (sh + th) // 2
+
+    cv2.putText(frame, text, (tx, ty), font, font_scale, _BLACK, thickness + 2, cv2.LINE_AA)
+    cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE, thickness,     cv2.LINE_AA)
+
+
+def draw_danger_border(frame: np.ndarray, frame_no: int) -> None:
+    """
+    DANGER 상태: 프레임 전체 두꺼운 적색 테두리 + 홀짝 프레임으로 강도 교체 (플래시).
+
+    frame_no 짝수 → 밝은 순수 적색
+    frame_no 홀수 → 어두운 적색 (약 60% 밝기)
+    테두리 두께: config.LDW["border_px"] (두꺼운 직사각형은 중심선이 좌표 안쪽으로 들어감).
+    """
+    H, W = frame.shape[:2]
+    bp = config.LDW["border_px"]
+    base_color = config.LDW["danger_border_color"]  # BGR
+
+    # 플래시: 홀수 프레임은 밝기 낮춤 (BGR * 0.6)
+    if frame_no % 2 == 0:
+        color = base_color
+    else:
+        color = tuple(int(c * 0.55) for c in base_color)  # type: ignore[assignment]
+
+    # 테두리를 frame 안쪽에 그려야 클리핑 없이 전체 표시됨
+    inset = bp // 2
+    cv2.rectangle(frame,
+                  (inset, inset),
+                  (W - inset - 1, H - inset - 1),
+                  color, bp)
+
+
+def draw_danger_banner(frame: np.ndarray, side: str, frame_no: int) -> None:
+    """
+    DANGER 상태: 화면 상단 대형 배너 "⚠ 차선 이탈 / LANE DEPARTURE" (in-place).
+
+    플래시와 동기화: 짝수 프레임 → 진한 배경, 홀수 → 약간 밝은 배경.
+    """
+    H, W = frame.shape[:2]
+    bh = config.LDW["danger_banner_h"]
+    bg = config.LDW["danger_banner_bg"]
+
+    alpha = 0.85 if frame_no % 2 == 0 else 0.65
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (W, bh), bg, -1)
+    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+
+    # 한글+영어 2행: ⚠ + 이탈 방향
+    line1 = f"!  {side} LANE DEPARTURE  !"
+    line2 = f"[  WARNING  --  {side}  ]"
+    font      = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 1.05
+    thickness  = 2
+
+    for i, text in enumerate([line1, line2]):
+        (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+        tx = (W - tw) // 2
+        # 두 줄 세로 배치: 상단 여백 약간 두고 줄간 th+4
+        ty = (bh // 2) - th // 2 + i * (th + 5) - (th // 2)
+        cv2.putText(frame, text, (tx, ty), font, font_scale, _BLACK, thickness + 2, cv2.LINE_AA)
+        cv2.putText(frame, text, (tx, ty), font, font_scale, _WHITE, thickness,     cv2.LINE_AA)
+
+
+def draw_drift_arrow(frame: np.ndarray, side: str) -> None:
+    """
+    DANGER 상태: 이탈 방향을 가리키는 큰 화살표를 배너 아래에 그린다 (in-place).
+
+    side="LEFT"  → ← 화살표 (왼쪽)
+    side="RIGHT" → → 화살표 (오른쪽)
+    """
+    H, W = frame.shape[:2]
+    bh = config.LDW["danger_banner_h"]
+
+    # 화살표 위치: 배너 바로 아래 중앙에서 약간 옆
+    cy = bh + 30  # 배너 아래 30px
+    cx = W // 2
+
+    arrow_len = 60
+    arrow_color = (0, 0, 255)  # 적색 BGR
+    tip_size    = 0.5
+
+    if side == "LEFT":
+        start = (cx + arrow_len, cy)
+        end   = (cx - arrow_len, cy)
+    else:
+        start = (cx - arrow_len, cy)
+        end   = (cx + arrow_len, cy)
+
+    cv2.arrowedLine(frame, start, end, _BLACK, 9, cv2.LINE_AA, tipLength=tip_size)
+    cv2.arrowedLine(frame, start, end, arrow_color, 5, cv2.LINE_AA, tipLength=tip_size)
+
+
+def draw_offset_gauge(
+    frame: np.ndarray,
+    off: float | None,
+    lane_st: str,
+) -> None:
+    """
+    화면 하단 오프셋 게이지 바 (공통, 모든 상태에서 표시).
+
+    게이지:
+      ─ 회색 배경 바 (전체 폭에서 좌우 gauge_h_margin 안쪽)
+      ─ 중앙 흰색 틱
+      ─ 차량 위치 마커 (원) — SAFE=흰, CAUTION=황, DANGER=적
+      ─ 수치 오프셋 텍스트
+    """
+    H, W = frame.shape[:2]
+    gh = config.LDW["gauge_height_px"]
+    gm = config.LDW["gauge_h_margin"]
+    bm = config.LDW["gauge_b_margin"]
+    mr = config.LDW["gauge_marker_r"]
+
+    # HUD 텍스트 영역 위 배치 (HUD 최대 6줄: frame/offset/WARN/MODE/Radius/DEMO)
+    hud_lines = 6  # demo+CURVE 모드 최대 행 수 (안전 상한)
+    hud_height = hud_lines * 24 + 8
+    gauge_y2 = H - hud_height - bm
+    gauge_y1 = gauge_y2 - gh
+
+    x_left  = gm
+    x_right = W - gm
+
+    # 배경 바 (반투명 어두운 회색)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x_left, gauge_y1), (x_right, gauge_y2), (40, 40, 40), -1)
+    cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
+
+    # 외곽선
+    cv2.rectangle(frame, (x_left, gauge_y1), (x_right, gauge_y2), (120, 120, 120), 1)
+
+    # 중앙 흰색 틱
+    cx = (x_left + x_right) // 2
+    mid_y = (gauge_y1 + gauge_y2) // 2
+    cv2.line(frame, (cx, gauge_y1 - 3), (cx, gauge_y2 + 3), _WHITE, 2)
+
+    # 차량 위치 마커
+    if off is not None:
+        # off 범위: 대략 [-1, 1] → 게이지 폭에 매핑
+        bar_w = x_right - x_left
+        clamp_off = max(-1.0, min(1.0, off))
+        # off 부호: 음수=LEFT, 양수=RIGHT. 게이지는 왼쪽 음수/오른쪽 양수.
+        # off=0 → 게이지 중앙(cx)
+        # off 부호: 양수=RIGHT 이탈(차량이 오른쪽으로 흘러감) → 마커를 오른쪽으로
+        mx = cx + int(clamp_off * (bar_w / 2))
+        mx = max(x_left + mr, min(x_right - mr, mx))
+
+        if lane_st == "DANGER":
+            marker_color = (0, 0, 255)
+        elif lane_st == "CAUTION":
+            marker_color = (0, 200, 220)
+        else:
+            marker_color = _WHITE
+
+        cv2.circle(frame, (mx, mid_y), mr, _BLACK, -1)
+        cv2.circle(frame, (mx, mid_y), mr - 2, marker_color, -1)
+
+        # 수치 텍스트 (마커 위)
+        off_str = f"{off:+.3f}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        fs   = 0.45
+        th   = 1
+        (tw, tth), _ = cv2.getTextSize(off_str, font, fs, th)
+        tx = max(x_left, min(mx - tw // 2, x_right - tw))
+        ty = gauge_y1 - 5
+        cv2.putText(frame, off_str, (tx, ty), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
+        cv2.putText(frame, off_str, (tx, ty), font, fs, marker_color, th, cv2.LINE_AA)
+    else:
+        # offset N/A
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(frame, "N/A", (cx - 15, mid_y + 5), font, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
+
+
 def draw_hud(
     frame: np.ndarray,
     off: float | None,
@@ -148,6 +361,7 @@ def draw_hud(
     right_state: str,
     curve_mode: str | None = None,
     curvature_r: float | None = None,
+    demo: bool = False,
 ) -> None:
     """
     화면 좌하단 HUD: 오프셋 수치 + 경고 상태 + 프레임 정보.
@@ -159,9 +373,11 @@ def draw_hud(
       - WARN: OFF | LEFT | RIGHT
       - MODE: CURVE  (또는 STRAIGHT(fallback))  ← M6 추가, None이면 미표시
       - Radius: 1234px  ← curve_mode="CURVE" 일 때만 표시
+      - [LDW DEMO — drift simulated]  ← demo=True 일 때 추가 행 (황색 강조)
 
     curve_mode: "CURVE" | "STRAIGHT(fallback)" | None (None이면 M6 HUD 숨김)
     curvature_r: 곡률 반경 (픽셀), curve_mode="CURVE"일 때만 의미 있음
+    demo: True이면 하단 "LDW DEMO — drift simulated" 태그 표시 (정직성 표시)
     """
     H, W = frame.shape[:2]
 
@@ -194,6 +410,10 @@ def draw_hud(
             r_str = f"{curvature_r:.0f}px" if curvature_r < 9_000_000 else "straight"
             lines.append((f"Radius: {r_str}", _YELLOW_HUD))
 
+    # demo 태그 (정직성)
+    if demo:
+        lines.append(("LDW DEMO  --  drift simulated", (0, 200, 220)))
+
     font       = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.65
     thickness  = 2
@@ -213,9 +433,10 @@ def draw_curved_area(
     polygon: np.ndarray,
     left_pts: np.ndarray,
     right_pts: np.ndarray,
+    lane_st: str = "SAFE",
 ) -> None:
     """
-    곡선 주행 가능 영역을 반투명 초록 폴리곤으로 채우고 양쪽 차선 곡선을 그린다 (in-place).
+    곡선 주행 가능 영역을 반투명 폴리곤으로 채우고 양쪽 차선 곡선을 그린다 (in-place).
 
     Args:
         frame    : 출력 프레임 (BGR, in-place 수정).
@@ -223,14 +444,22 @@ def draw_curved_area(
                    fillPoly용. 좌측 위→아래 + 우측 아래→위 순서.
         left_pts : 왼쪽 차선 곡선 포인트 (shape: (N, 2) int32). polylines용.
         right_pts: 오른쪽 차선 곡선 포인트 (shape: (N, 2) int32). polylines용.
+        lane_st  : "SAFE"(초록) | "CAUTION"(황색) | "DANGER"(적색).
 
     fill_alpha: config.LDW["fill_alpha"] (직선 오버레이와 동일 설정).
     """
     alpha = config.LDW["fill_alpha"]
 
-    # 반투명 초록 폴리곤 (drivable area)
+    if lane_st == "DANGER":
+        fill_color = config.LDW["danger_fill"]
+    elif lane_st == "CAUTION":
+        fill_color = config.LDW["caution_fill"]
+    else:
+        fill_color = _GREEN_FILL
+
+    # 반투명 폴리곤 (drivable area)
     overlay = frame.copy()
-    cv2.fillPoly(overlay, [polygon.reshape((-1, 1, 2))], _GREEN_FILL)
+    cv2.fillPoly(overlay, [polygon.reshape((-1, 1, 2))], fill_color)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
     # 차선 곡선 (실선, 초록)
@@ -337,35 +566,55 @@ def render_frame(
     draw_lines: bool = True,
     curve_mode: str | None = None,
     curvature_r: float | None = None,
+    lane_st: str = "SAFE",
+    demo: bool = False,
 ) -> None:
     """
     한 프레임에 모든 오버레이를 합성한다 (in-place).
 
     순서:
-      1. 주행영역 반투명 폴리곤 (draw_area=True이고 양쪽 차선이 있을 때만)
-      2. 차선선 (draw_lines=True일 때만; 경고 방향은 빨강)
-      3. 경고 배너 (warning ON 시만)
-      4. HUD
+      1. 주행영역 반투명 폴리곤 (draw_area=True이고 양쪽 차선이 있을 때만, lane_st 색상)
+      2. 차선선 (draw_lines=True일 때만; DANGER 방향은 빨강+두꺼움)
+      3. 상태별 배너/띠 (SAFE=없음, CAUTION=황색 띠, DANGER=플래시 테두리+대형 배너+화살표)
+      4. 오프셋 게이지 (모든 상태)
+      5. HUD
 
     M6 파라미터 (기본값=None → 기존 동작 유지):
       draw_area    : False이면 직선 주행영역 폴리곤 스킵 (곡선 모드에서 사용).
       draw_lines   : False이면 직선 차선선 스킵 (곡선 모드에서 사용).
       curve_mode   : "CURVE" | "STRAIGHT(fallback)" | None. HUD에 표시.
       curvature_r  : 곡률 반경 (픽셀). curve_mode="CURVE"일 때 HUD에 표시.
+
+    3-state 파라미터:
+      lane_st : "SAFE" | "CAUTION" | "DANGER" — 색상 및 추가 요소 선택.
+      demo    : True이면 HUD에 "LDW DEMO -- drift simulated" 태그 표시.
     """
     # 1. 주행영역 폴리곤 (STRAIGHT 모드 또는 fallback 모드에서만)
     if draw_area and left_fit is not None and right_fit is not None:
-        draw_drivable_area(frame, left_fit, right_fit, y_bottom, y_top)
+        draw_drivable_area(frame, left_fit, right_fit, y_bottom, y_top, lane_st)
 
     # 2. 차선선 (STRAIGHT 모드 또는 fallback 모드에서만)
     if draw_lines:
         draw_lane_lines_ldw(frame, left_fit, right_fit, y_bottom, y_top, warning, side)
 
-    # 3. 경고 배너
-    if warning and side is not None:
-        draw_ldw_banner(frame, side)
+    # 3. 상태별 배너/테두리/화살표
+    if lane_st == "DANGER":
+        # DANGER: 플래시 테두리 (최하위 레이어로 먼저, 이후 배너가 위에)
+        draw_danger_border(frame, frame_no)
+        # 대형 배너 (기존 draw_ldw_banner 대체)
+        if side is not None:
+            draw_danger_banner(frame, side, frame_no)
+            # 방향 화살표
+            draw_drift_arrow(frame, side)
+    elif lane_st == "CAUTION":
+        draw_caution_strip(frame)
+    # SAFE: 추가 배너 없음 (기존과 동일 — 초록 영역만)
 
-    # 4. HUD (curve_mode/curvature_r 전달)
+    # 4. 오프셋 게이지 (공통)
+    draw_offset_gauge(frame, off, lane_st)
+
+    # 5. HUD (curve_mode/curvature_r 전달)
     draw_hud(frame, off, warning, side,
              frame_no, total_frames, n_segs, left_state, right_state,
-             curve_mode=curve_mode, curvature_r=curvature_r)
+             curve_mode=curve_mode, curvature_r=curvature_r,
+             demo=demo)

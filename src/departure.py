@@ -71,6 +71,28 @@ def offset(
     return (car_center - center) / (lane_pixel_width / 2.0)
 
 
+def lane_state(off: float | None, warning: bool) -> str:
+    """
+    3-state 차선 상태를 반환.  오버레이 색상 선택 및 데모 프레임 덤프 기준.
+
+    SAFE    : |offset| < warn_off (완전 안전, 초록)
+    CAUTION : warn_off ≤ |offset| < warn_on (히스테리시스 유지 구간, 황색)
+    DANGER  : warning latched ON (위험, 적색)
+
+    Note: DANGER 판정은 warning 래치값 기반.  raw |off|>warn_on 재비교 안 함.
+      이유: 히스테리시스 유지 구간에서 배너/테두리가 플리커하지 않게.
+    """
+    if warning:
+        return "DANGER"
+    if off is None:
+        return "SAFE"
+    warn_off = config.LDW["warn_off"]
+    warn_on  = config.LDW["warn_on"]
+    if warn_off <= abs(off) < warn_on:
+        return "CAUTION"
+    return "SAFE"
+
+
 class DepartureState:
     """
     프레임별 오프셋을 입력받아 히스테리시스 경고 상태를 추적.
