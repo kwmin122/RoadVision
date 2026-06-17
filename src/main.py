@@ -1,16 +1,18 @@
 """
-Slice 2 — 원시 차선 오버레이 (grayscale → Canny → ROI → Hough).
+Slice 3 — 견고한 단일 차선선 (색상필터 + 기울기 분리 + 가중 폴리핏).
 
 각 프레임에 대해:
-  1. 전처리(gray→blur→Canny) → edges
-  2. ROI 마스킹 → roi_edges
+  1. 색상필터+Canny 결합 → lane_mask
+  2. ROI 마스킹 → roi_mask
   3. HoughLinesP → raw segments
-  4. 빨간 선분 오버레이
-  5. HUD 유지
-  6. 결과 mp4 출력
+  4. 기울기 기준 좌/우 분리 (split_segments)
+  5. 가중 폴리핏으로 좌/우 각 1개 직선 피팅 (fit_lane)
+  6. 두꺼운 초록 선으로 오버레이 (draw_lane_lines)
+  7. HUD: 좌/우 검출 여부 표시
+  8. 결과 mp4 출력
 
-디버그: --debug-frame N 으로 지정한 프레임에서
-  frames/slice2_edges.png, frames/slice2_roi_edges.png, frames/slice2_overlay.png 저장.
+디버그: --debug-frame N 으로 지정한 프레임(기본=130)에서
+  frames/slice3_colormask.png, frames/slice3_lanemask.png, frames/slice3_overlay.png 저장.
 """
 from __future__ import annotations
 
@@ -27,8 +29,20 @@ from src import roi
 from src import lane_detect
 
 
+def _roi_y_top(W: int, H: int, clip_key: str) -> int:
+    """
+    ROI 사다리꼴의 상단 y좌표를 config.ROI_TRAPEZOID_RATIO에서 유도.
+
+    ROI 꼭짓점 중 최소 ry 비율 × H = 차선선 외삽 상단 경계.
+    """
+    key = config.res_key(clip_key)
+    ratios = config.ROI_TRAPEZOID_RATIO[key]
+    min_ry = min(ry for _, ry in ratios)
+    return int(min_ry * H)
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="RoadVision — Slice 2 raw lane overlay")
+    parser = argparse.ArgumentParser(description="RoadVision — Slice 3 robust lane lines")
     parser.add_argument(
         "--clip",
         choices=list(config.CLIPS.keys()),
@@ -74,6 +88,11 @@ def main() -> None:
 
     print(f"입력: {input_path}  해상도={width}x{height}  fps={fps:.2f}  총프레임={total}")
 
+    # ROI 상단 y좌표 (차선선 외삽 범위)
+    y_bottom = height
+    y_top = _roi_y_top(width, height, clip_key)
+    print(f"ROI y 범위: y_top={y_top}, y_bottom={y_bottom}")
+
     frames_read = 0
     frames_written = 0
     t_start = time.perf_counter()
@@ -86,42 +105,57 @@ def main() -> None:
         frames_read += 1
         W, H = width, height
 
-        # 1. 전처리: grayscale → GaussianBlur → Canny
-        edges = preprocess.to_edges(frame)
+        # 1. 색상필터 + Canny 결합 → lane_mask
+        lmask = preprocess.lane_mask(frame)
 
         # 2. ROI 마스킹
-        roi_edges = roi.apply(edges, W, H, clip_key)
+        roi_mask = roi.apply(lmask, W, H, clip_key)
 
-        # 3. Hough 선분 검출
-        segments = lane_detect.raw_segments(roi_edges)
+        # 3. HoughLinesP → raw segments
+        segments = lane_detect.raw_segments(roi_mask)
 
-        # 4. 선분 오버레이 (빨간색)
-        lane_detect.draw_segments(frame, segments)
+        # 4. 기울기 기준 좌/우 분리
+        left_segs, right_segs = lane_detect.split_segments(segments)
 
-        # 5. 디버그 프레임 저장 (지정 프레임에서만)
+        # 5. 가중 폴리핏으로 각 1개 직선 피팅
+        left_line = lane_detect.fit_lane(left_segs, y_bottom, y_top)
+        right_line = lane_detect.fit_lane(right_segs, y_bottom, y_top)
+
+        # 6. 두꺼운 초록 차선선 오버레이
+        lane_detect.draw_lane_lines(frame, left_line, right_line, y_bottom, y_top)
+
+        # 7. 디버그 프레임 저장 (지정 프레임에서만)
         if frames_read == debug_frame_idx:
-            # edges 저장
+            # color_mask 저장
+            cmask = preprocess.color_mask(frame)
             cv2.imwrite(
-                os.path.join(config.FRAMES_DIR, "slice2_edges.png"),
-                edges,
+                os.path.join(config.FRAMES_DIR, "slice3_colormask.png"),
+                cmask,
             )
-            # roi_edges 저장
+            # lane_mask 저장 (ROI 적용 전)
             cv2.imwrite(
-                os.path.join(config.FRAMES_DIR, "slice2_roi_edges.png"),
-                roi_edges,
+                os.path.join(config.FRAMES_DIR, "slice3_lanemask.png"),
+                lmask,
             )
-            # overlay: ROI 폴리곤(초록) + 선분(빨간) 위에 ROI 경계 추가
+            # overlay: ROI 폴리곤 경계 + 차선선 오버레이 저장
             overlay_debug = frame.copy()
             roi_poly = roi.polygon(W, H, clip_key)
-            cv2.polylines(overlay_debug, [roi_poly], True, (0, 255, 0), 2)
+            cv2.polylines(overlay_debug, [roi_poly], True, (255, 0, 0), 2)  # 파란 ROI 경계
             cv2.imwrite(
-                os.path.join(config.FRAMES_DIR, "slice2_overlay.png"),
+                os.path.join(config.FRAMES_DIR, "slice3_overlay.png"),
                 overlay_debug,
             )
-            print(f"  [debug] 프레임 {frames_read}: 선분 {len(segments)}개 검출, 디버그 프레임 저장 완료")
+            print(
+                f"  [debug] 프레임 {frames_read}: "
+                f"segs={len(segments)}  left_segs={len(left_segs)}  right_segs={len(right_segs)}  "
+                f"left={'OK' if left_line else 'MISS'}  right={'OK' if right_line else 'MISS'}  "
+                f"디버그 프레임 저장 완료"
+            )
 
-        # 6. HUD: 프레임 카운터 + 선분 수
-        label = f"frame {frames_read}/{total}  segs:{len(segments)}"
+        # 8. HUD: 프레임 카운터 + 좌/우 검출 여부
+        left_status = "L:OK" if left_line else "L:--"
+        right_status = "R:OK" if right_line else "R:--"
+        label = f"frame {frames_read}/{total}  {left_status}  {right_status}  segs:{len(segments)}"
         cv2.putText(
             frame,
             label,

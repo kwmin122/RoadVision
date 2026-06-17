@@ -53,6 +53,11 @@ HOUGH = {"rho": 1, "theta_deg": 1, "threshold": 20,
          "min_line_len": 20, "max_line_gap": 300}
 SLOPE_RANGE = (0.5, 2.0)  # |기울기| 필터 (수평·수직 잡선 제거)
 
+# --- 차선 피팅 (슬라이스 3) ---
+# fit_lane에서 폴리핏 시 최소 끝점 수. 2선분 × 2끝점 = 4가 수학적 최소보다 보수적.
+# 노이즈 단일 선분에서의 가짜 피팅 방지.
+FIT_MIN_POINTS = 4
+
 # --- 시간평활 / 이상치 거부 (10강) ---  TODO-TUNE
 SMOOTH_WINDOW = 10                 # 러닝평균 프레임 수 N
 OUTLIER_SLOPE_DEV = 0.30           # 직전평균 대비 기울기 편차 임계 → 초과시 reject
