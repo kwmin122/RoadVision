@@ -1,5 +1,5 @@
 """
-Slice 4 — 시간평활 + 이상치 거부 + 검출 상태 로깅 (M3).
+Slice 5 — 차선 이탈 경고(LDW) + 주행영역 오버레이 (M4).
 
 각 프레임에 대해:
   1. 색상필터+Canny 결합 → lane_mask
@@ -8,10 +8,11 @@ Slice 4 — 시간평활 + 이상치 거부 + 검출 상태 로깅 (M3).
   4. 기울기 기준 좌/우 분리 (split_segments)
   5. 가중 폴리핏으로 좌/우 각 1개 직선 피팅 (fit_lane) → raw_left, raw_right
   6. LaneSmoother.update() → smoothed_left/right + left_state/right_state
-  7. smoothed 차선선 오버레이 (draw_lane_lines)
-  8. HUD: 좌/우 상태 표시
-  9. CSV 행 기록 (frame, left_state, right_state)
-  10. 결과 mp4 출력
+  7. departure.offset() → off
+  8. DepartureState.update(off) → (warning, side)
+  9. overlay.render_frame() → 주행영역+차선+배너+HUD 합성
+  10. CSV 행 기록 (frame, left_state, right_state)
+  11. 결과 mp4 출력
 
 종료 후:
   - output/{clip}_detect_log.csv 저장 (header + 1행/프레임)
@@ -19,6 +20,9 @@ Slice 4 — 시간평활 + 이상치 거부 + 검출 상태 로깅 (M3).
 
 디버그: --debug-frame N 으로 지정한 프레임(기본=130)에서
   frames/slice4_colormask.png, frames/slice4_lanemask.png, frames/slice4_overlay.png 저장.
+
+debug-warn: --debug-warn 플래그 시 frames/ldw_off.png, frames/ldw_on.png 생성.
+  ldw_on.png = 합성 오프셋(1.0)으로 강제 경고 트리거한 프레임.
 """
 from __future__ import annotations
 
@@ -35,6 +39,8 @@ from src import preprocess
 from src import roi
 from src import lane_detect
 from src.smoothing import LaneSmoother, VALID_STATES
+from src import departure as dep
+from src import overlay as ov
 
 
 def _roi_y_top(W: int, H: int, clip_key: str) -> int:
@@ -51,7 +57,7 @@ def _roi_y_top(W: int, H: int, clip_key: str) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="RoadVision — Slice 4: temporal smoothing + outlier rejection + detect logging"
+        description="RoadVision — Slice 5: LDW + drivable area overlay"
     )
     parser.add_argument(
         "--clip",
@@ -64,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=130,
         help="디버그 프레임 저장할 프레임 번호 (1-based, 기본=130)",
+    )
+    parser.add_argument(
+        "--debug-warn",
+        action="store_true",
+        help="ldw_off.png / ldw_on.png 생성 (경고 OFF/ON 디버그 프레임)",
     )
     return parser.parse_args()
 
@@ -81,7 +92,7 @@ def main() -> None:
     os.makedirs(config.FRAMES_DIR, exist_ok=True)
 
     output_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_overlay.mp4")
-    csv_path = os.path.join(config.OUTPUT_DIR, f"{clip_key}_detect_log.csv")
+    csv_path    = os.path.join(config.OUTPUT_DIR, f"{clip_key}_detect_log.csv")
 
     # 캡처 열기
     cap = cv2.VideoCapture(input_path)
@@ -89,10 +100,10 @@ def main() -> None:
         raise RuntimeError(f"영상을 열 수 없습니다: {input_path}")
 
     # 메타데이터를 캡처에서 직접 읽음 (하드코딩 금지)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    fps    = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
@@ -101,25 +112,33 @@ def main() -> None:
 
     # ROI 상단 y좌표 (차선선 외삽 범위)
     y_bottom = height
-    y_top = _roi_y_top(width, height, clip_key)
+    y_top    = _roi_y_top(width, height, clip_key)
     print(f"ROI y 범위: y_top={y_top}, y_bottom={y_bottom}")
     print(f"스무딩 설정: SMOOTH_WINDOW={config.SMOOTH_WINDOW}  "
           f"OUTLIER_SLOPE_DEV={config.OUTLIER_SLOPE_DEV}  "
           f"HOLD_MAX_FRAMES={config.HOLD_MAX_FRAMES}")
+    print(f"LDW 설정: warn_on={config.LDW['warn_on']}  "
+          f"warn_off={config.LDW['warn_off']}  "
+          f"fill_alpha={config.LDW['fill_alpha']}")
 
-    # 스무더 초기화 (슬라이스 4 핵심)
-    smoother = LaneSmoother()
+    # 스무더 + 이탈 상태 초기화
+    smoother  = LaneSmoother()
+    dep_state = dep.DepartureState()
 
-    # CSV 버퍼 (메모리에 쌓아서 종료 시 한 번에 씀)
+    # CSV 버퍼
     csv_rows: list[tuple[int, str, str]] = []
 
-    # 상태 카운터 (honesty gate: 반드시 4개 상태 문자열로만 집계)
+    # 상태 카운터 (honesty gate)
     state_counts: dict[str, dict[str, int]] = {
         "left":  {s: 0 for s in VALID_STATES},
         "right": {s: 0 for s in VALID_STATES},
     }
 
-    frames_read = 0
+    # 디버그 프레임 저장 여부 추적
+    saved_ldw_off = False
+    saved_ldw_on  = False
+
+    frames_read    = 0
     frames_written = 0
     t_start = time.perf_counter()
 
@@ -143,26 +162,44 @@ def main() -> None:
         # 4. 기울기 기준 좌/우 분리
         left_segs, right_segs = lane_detect.split_segments(segments)
 
-        # 5. 가중 폴리핏으로 각 1개 직선 피팅 (raw — 평활화 전)
-        raw_left = lane_detect.fit_lane(left_segs, y_bottom, y_top)
+        # 5. 가중 폴리핏 (raw)
+        raw_left  = lane_detect.fit_lane(left_segs, y_bottom, y_top)
         raw_right = lane_detect.fit_lane(right_segs, y_bottom, y_top)
 
-        # 6. 시간평활 + 이상치 거부 → smoothed 출력 + 상태
-        smoothed_left, left_state = smoother.update("left", raw_left)
+        # 6. 시간평활 + 이상치 거부
+        smoothed_left,  left_state  = smoother.update("left",  raw_left)
         smoothed_right, right_state = smoother.update("right", raw_right)
 
         # 상태 카운트 누적
-        state_counts["left"][left_state] += 1
+        state_counts["left"][left_state]   += 1
         state_counts["right"][right_state] += 1
 
-        # CSV 행 버퍼
+        # CSV 행 버퍼 (schema 유지: frame, left_state, right_state)
         csv_rows.append((frames_read, left_state, right_state))
 
-        # 7. smoothed 차선선 오버레이 (raw 대신 smoothed 출력만 그림)
-        lane_detect.draw_lane_lines(frame, smoothed_left, smoothed_right, y_bottom, y_top)
+        # 7. LDW 오프셋 계산
+        off = dep.offset(smoothed_left, smoothed_right, W)
 
-        # 8. 디버그 프레임 저장 (지정 프레임에서만)
+        # 8. 히스테리시스 경고 상태 갱신
+        warning, side = dep_state.update(off)
+
+        # debug-warn용 원본 복사 (렌더링 전, ldw_on.png 합성에서만 사용)
+        frame_clean = frame.copy() if (args.debug_warn and frames_read == debug_frame_idx) else None
+
+        # 9. 오버레이 합성 (in-place)
+        ov.render_frame(
+            frame,
+            smoothed_left, smoothed_right,
+            y_bottom, y_top,
+            off, warning, side,
+            frames_read, total,
+            len(segments),
+            left_state, right_state,
+        )
+
+        # 10. 디버그 프레임 저장
         if frames_read == debug_frame_idx:
+            # 기존 slice4 디버그 파일들 (호환)
             cmask = preprocess.color_mask(frame)
             cv2.imwrite(os.path.join(config.FRAMES_DIR, "slice4_colormask.png"), cmask)
             cv2.imwrite(os.path.join(config.FRAMES_DIR, "slice4_lanemask.png"), lmask)
@@ -170,29 +207,44 @@ def main() -> None:
             roi_poly = roi.polygon(W, H, clip_key)
             cv2.polylines(overlay_debug, [roi_poly], True, (255, 0, 0), 2)
             cv2.imwrite(os.path.join(config.FRAMES_DIR, "slice4_overlay.png"), overlay_debug)
+            off_str = f"{off:.4f}" if off is not None else "N/A"
             print(
                 f"  [debug] 프레임 {frames_read}: "
-                f"segs={len(segments)}  L_raw={'OK' if raw_left else 'MISS'}({left_state})  "
-                f"R_raw={'OK' if raw_right else 'MISS'}({right_state})"
+                f"segs={len(segments)}  "
+                f"L_raw={'OK' if raw_left else 'MISS'}({left_state})  "
+                f"R_raw={'OK' if raw_right else 'MISS'}({right_state})  "
+                f"off={off_str}  "
+                f"warn={warning} side={side}"
             )
 
-        # 9. HUD: 프레임 카운터 + 좌/우 스무딩 상태
-        # 상태 문자열 축약 (화면 공간 절약)
-        _abbr = {
-            "raw_detected": "raw",
-            "rejected_as_outlier": "rej",
-            "held_from_previous": "hld",
-            "consecutive_missing": "mis",
-        }
-        label = (
-            f"frame {frames_read}/{total}  "
-            f"L:{_abbr[left_state]}  R:{_abbr[right_state]}  "
-            f"segs:{len(segments)}"
-        )
-        cv2.putText(
-            frame, label, (10, 24),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA,
-        )
+        # --debug-warn: debug_frame_idx(기본=130)에서 ldw_off.png + ldw_on.png 저장.
+        # debug_frame_idx는 스무더가 충분히 워밍업된 안정적인 프레임 — 대표성 보장.
+        if args.debug_warn and frames_read == debug_frame_idx:
+            # ldw_off.png: 실제 렌더링된 정상 프레임 (현재 frame에 이미 render_frame 적용됨)
+            if not saved_ldw_off and off is not None:
+                cv2.imwrite(os.path.join(config.FRAMES_DIR, "ldw_off.png"), frame)
+                saved_ldw_off = True
+                off_str = f"{off:.4f}" if off is not None else "N/A"
+                print(f"  [debug-warn] ldw_off.png 저장 (frame={frames_read}, off={off_str})")
+
+            # ldw_on.png: 렌더링 전 원본(frame_clean)에 합성 경고 오버레이 적용
+            if not saved_ldw_on and frame_clean is not None \
+                    and smoothed_left is not None and smoothed_right is not None:
+                synth_frame = frame_clean.copy()
+                # 합성 파라미터: 우측 이탈 (|offset|=1.0 >> warn_on=0.35)
+                synth_off, synth_warning, synth_side = 1.0, True, "RIGHT"
+                ov.render_frame(
+                    synth_frame,
+                    smoothed_left, smoothed_right,
+                    y_bottom, y_top,
+                    synth_off, synth_warning, synth_side,
+                    frames_read, total,
+                    len(segments),
+                    left_state, right_state,
+                )
+                cv2.imwrite(os.path.join(config.FRAMES_DIR, "ldw_on.png"), synth_frame)
+                saved_ldw_on = True
+                print(f"  [debug-warn] ldw_on.png 저장 (frame={frames_read}, synth_off=1.0, side=RIGHT)")
 
         writer.write(frame)
         frames_written += 1
@@ -214,20 +266,19 @@ def main() -> None:
 
     # ------------------------------------------------------------------
     # 상태 집계 검증 (honesty gate)
-    # 총 프레임 수 = frames_read 로 분모 고정 (부풀리기 원천차단)
     # ------------------------------------------------------------------
     total_frames = frames_read
 
     print("\n=== 검출 상태 요약 (C2 메트릭) ===")
-    for side in ("left", "right"):
-        cnts = state_counts[side]
-        raw = cnts["raw_detected"]
-        rej = cnts["rejected_as_outlier"]
-        hld = cnts["held_from_previous"]
-        mis = cnts["consecutive_missing"]
+    for side_name in ("left", "right"):
+        cnts   = state_counts[side_name]
+        raw    = cnts["raw_detected"]
+        rej    = cnts["rejected_as_outlier"]
+        hld    = cnts["held_from_previous"]
+        mis    = cnts["consecutive_missing"]
         raw_rate = raw / total_frames * 100 if total_frames else 0.0
 
-        print(f"\n  [{side.upper()}]")
+        print(f"\n  [{side_name.upper()}]")
         print(f"    raw_detected        : {raw:4d}  ({raw_rate:.1f}% — C2 기준)")
         print(f"    rejected_as_outlier : {rej:4d}  ({rej/total_frames*100:.1f}%)")
         print(f"    held_from_previous  : {hld:4d}  ({hld/total_frames*100:.1f}%)")

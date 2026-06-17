@@ -79,8 +79,19 @@ SMOOTH_WINDOW = 10                 # 러닝평균 프레임 수 N
 OUTLIER_SLOPE_DEV = 0.30           # 직전평균 대비 기울기 편차 임계 → 초과시 reject
 HOLD_MAX_FRAMES = 8                # 미검출 시 직전 안정값 유지 최대 프레임
 
-# --- LDW (차선 이탈 경고) ---  TODO-TUNE  (히스테리시스: ON>0.35, OFF<0.25)
-LDW = {"warn_on": 0.35, "warn_off": 0.25, "lane_width_m": 3.7}
+# --- LDW (차선 이탈 경고) ---  히스테리시스: ON>0.35, OFF<0.25
+# fill_alpha: 주행영역 반투명 초록 폴리곤 불투명도 (0.0=완전 투명 / 1.0=완전 불투명).
+#   0.3 = 원본 영상이 비치면서도 초록 영역이 식별 가능한 밸런스.
+# banner_height: 경고 ON 시 화면 상단 빨강 배너 높이 (px). 50은 960×540에서 글자 1줄 여유.
+LDW = {
+    "warn_on":       0.35,   # 절댓값 오프셋이 이 이상이면 경고 ON
+    "warn_off":      0.25,   # 절댓값 오프셋이 이 미만이면 경고 OFF (히스테리시스)
+    "lane_width_m":  3.7,    # 차선폭(미터) — 미터 환산용 (현재 정규화 오프셋에서 선택 사용)
+    "fill_alpha":    0.30,   # 주행영역 폴리곤 투명도 (addWeighted 에서 src1 가중치)
+    "banner_height": 50,     # 경고 배너 높이 (px)
+    "banner_alpha":  0.75,   # 경고 배너 배경 불투명도 (1−alpha = 배경 비침 정도)
+                             # 0.75: 빨강 배너가 선명하면서도 하단 영상이 약간 비침
+}
 
 # --- Bird-eye homography (9강) ---  TODO-TUNE: 클립별 4점 직접 확정
 # src=원근 도로 사다리꼴 4점, dst=탑다운 직사각 4점. (x,y) 픽셀.
