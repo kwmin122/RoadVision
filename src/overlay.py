@@ -29,6 +29,7 @@ import cv2
 import numpy as np
 
 from src import config
+from src import departure as _dep
 
 # ---------- 색상 상수 ----------
 _GREEN_FILL = (0, 200, 0)
@@ -59,14 +60,15 @@ def draw_drivable_area(
     lane_st: "SAFE"(초록) | "CAUTION"(황색) | "DANGER"(적색)
     fill_alpha: config.LDW["fill_alpha"] (0.0~1.0).
     """
-    alpha = config.LDW["fill_alpha"]
-
     if lane_st == "DANGER":
         fill_color = config.LDW["danger_fill"]
+        alpha = config.LDW["fill_alpha"]
     elif lane_st == "CAUTION":
         fill_color = config.LDW["caution_fill"]
+        alpha = config.LDW["caution_fill_alpha"]  # CAUTION은 더 선명한 별도 알파값 사용
     else:
         fill_color = _GREEN_FILL
+        alpha = config.LDW["fill_alpha"]
 
     lx_bot, lx_top = left_fit
     rx_bot, rx_top = right_fit
@@ -161,15 +163,18 @@ def draw_ldw_banner(
 
 def draw_caution_strip(frame: np.ndarray) -> None:
     """
-    CAUTION 상태: 상단 황색 좁은 띠 + "차선 근접 / LANE PROXIMITY" 텍스트 (in-place).
+    CAUTION 상태: 상단 황색 띠 + "LANE PROXIMITY / CAUTION" 텍스트 (in-place).
+
+    caution_strip_alpha: config.LDW["caution_strip_alpha"] — 0.90으로 선명하게.
     """
     H, W = frame.shape[:2]
     sh = config.LDW["caution_strip_h"]
     bg_color = config.LDW["caution_strip_color"]
+    strip_alpha = config.LDW["caution_strip_alpha"]
 
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (W, sh), bg_color, -1)
-    cv2.addWeighted(overlay, 0.80, frame, 0.20, 0, frame)
+    cv2.addWeighted(overlay, strip_alpha, frame, 1.0 - strip_alpha, 0, frame)
 
     text = "  LANE PROXIMITY  /  CAUTION  "
     font      = cv2.FONT_HERSHEY_DUPLEX
@@ -290,8 +295,8 @@ def draw_offset_gauge(
     bm = config.LDW["gauge_b_margin"]
     mr = config.LDW["gauge_marker_r"]
 
-    # HUD 텍스트 영역 위 배치 (HUD 최대 6줄: frame/offset/WARN/MODE/Radius/DEMO)
-    hud_lines = 6  # demo+CURVE 모드 최대 행 수 (안전 상한)
+    # HUD 텍스트 영역 위 배치 (HUD 최대 7줄: frame/offset/wheel->line/WARN/MODE/Radius/DEMO)
+    hud_lines = 7  # demo+CURVE 모드 최대 행 수 (안전 상한)
     hud_height = hud_lines * 24 + 8
     gauge_y2 = H - hud_height - bm
     gauge_y1 = gauge_y2 - gh
@@ -333,16 +338,26 @@ def draw_offset_gauge(
         cv2.circle(frame, (mx, mid_y), mr, _BLACK, -1)
         cv2.circle(frame, (mx, mid_y), mr - 2, marker_color, -1)
 
-        # 수치 텍스트 (마커 위)
-        off_str = f"{off:+.3f}"
+        # 수치 텍스트 (마커 위): wheel→line 거리(m) + 근사값 노트
+        wtl = _dep.wheel_to_line_m(off)
+        lat_m = _dep.lateral_offset_m(off)
+        wtl_str  = f"wheel->line: {wtl:.2f} m  ~approx(uncalibrated)"
+        lat_str  = f"offset_m: {lat_m:+.2f} m"
         font = cv2.FONT_HERSHEY_SIMPLEX
-        fs   = 0.45
+        fs   = 0.42
         th   = 1
-        (tw, tth), _ = cv2.getTextSize(off_str, font, fs, th)
+        # wheel->line 행 (마커 위)
+        (tw, tth), _ = cv2.getTextSize(wtl_str, font, fs, th)
         tx = max(x_left, min(mx - tw // 2, x_right - tw))
         ty = gauge_y1 - 5
-        cv2.putText(frame, off_str, (tx, ty), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
-        cv2.putText(frame, off_str, (tx, ty), font, fs, marker_color, th, cv2.LINE_AA)
+        cv2.putText(frame, wtl_str, (tx, ty), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
+        cv2.putText(frame, wtl_str, (tx, ty), font, fs, marker_color, th, cv2.LINE_AA)
+        # offset_m 행 (wheel->line 위)
+        (tw2, _), _ = cv2.getTextSize(lat_str, font, fs, th)
+        tx2 = max(x_left, min(mx - tw2 // 2, x_right - tw2))
+        ty2 = ty - tth - 3
+        cv2.putText(frame, lat_str, (tx2, ty2), font, fs, _BLACK,  th + 1, cv2.LINE_AA)
+        cv2.putText(frame, lat_str, (tx2, ty2), font, fs, marker_color, th, cv2.LINE_AA)
     else:
         # offset N/A
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -392,13 +407,24 @@ def draw_hud(
     warn_str = f"{side}" if (warning and side) else "OFF"
     warn_color = _RED_LINE if warning else _GREEN_LINE
 
+    # wheel→line 거리 및 측방향 오프셋(m) HUD 표시
+    if off is not None:
+        wtl    = _dep.wheel_to_line_m(off)
+        lat_m  = _dep.lateral_offset_m(off)  # 부호 포함 미터 (음수=LEFT, 양수=RIGHT)
+        wtl_str = f"{wtl:.2f} m"
+        lat_str = f"{lat_m:+.2f} m"
+    else:
+        wtl_str = "N/A"
+        lat_str = "N/A"
+
     lines: list[tuple[str, tuple[int, int, int]]] = [
         (f"frame {frame_no}/{total_frames}  "
          f"L:{_abbr.get(left_state, left_state)}  "
          f"R:{_abbr.get(right_state, right_state)}  "
          f"segs:{n_segs}",
          _WHITE),
-        (f"offset: {off_str}", _YELLOW_HUD),
+        (f"offset: {off_str}  offset_m: {lat_str}", _YELLOW_HUD),
+        (f"wheel->line: {wtl_str}  ~approx(uncalibrated)", _YELLOW_HUD),
         (f"WARN: {warn_str}", warn_color),
     ]
 
@@ -448,14 +474,15 @@ def draw_curved_area(
 
     fill_alpha: config.LDW["fill_alpha"] (직선 오버레이와 동일 설정).
     """
-    alpha = config.LDW["fill_alpha"]
-
     if lane_st == "DANGER":
         fill_color = config.LDW["danger_fill"]
+        alpha = config.LDW["fill_alpha"]
     elif lane_st == "CAUTION":
         fill_color = config.LDW["caution_fill"]
+        alpha = config.LDW["caution_fill_alpha"]  # CAUTION은 더 선명한 별도 알파값 사용
     else:
         fill_color = _GREEN_FILL
+        alpha = config.LDW["fill_alpha"]
 
     # 반투명 폴리곤 (drivable area)
     overlay = frame.copy()

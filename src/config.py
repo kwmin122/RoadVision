@@ -79,49 +79,78 @@ SMOOTH_WINDOW = 10                 # 러닝평균 프레임 수 N
 OUTLIER_SLOPE_DEV = 0.30           # 직전평균 대비 기울기 편차 임계 → 초과시 reject
 HOLD_MAX_FRAMES = 8                # 미검출 시 직전 안정값 유지 최대 프레임
 
-# --- LDW (차선 이탈 경고) ---  히스테리시스: ON>0.35, OFF<0.25
+# --- LDW (차선 이탈 경고) --- 물리 기반 휠-차선 거리 모델
+#
+# 가정 (§8 설계 문서와 동기화):
+#   lane_width_m  = 3.7  : 미국 고속도로 표준 차선폭 (m)
+#   vehicle_width_m = 1.8: 승용차 대표 차폭 (m)
+#   카메라는 차량 횡방향 중심에 고정됨.
+#
+# 파생 상수:
+#   half_lane = lane_width_m / 2 = 1.85 m
+#   half_car  = vehicle_width_m / 2 = 0.90 m
+#
+# 정규화 오프셋(offset_norm) → 미터 변환:
+#   lateral_m = |offset_norm| × half_lane   (차량 중심의 횡방향 편차, 미터)
+#   wheel_to_line_m = (half_lane - half_car) - lateral_m
+#                   = 0.95 - lateral_m
+#   해석: 근접 휠에서 근접 차선까지의 여유 거리 (m). 음수 = 휠이 차선 침범.
+#
+# 3-state 판정 (wheel_to_line_m 기준, 우선순위: DANGER > CAUTION > SAFE):
+#   DANGER  : wheel_to_line_m ≤ danger_dist_m (0.15)  [진입]
+#             wheel_to_line_m ≤ danger_exit_dist_m (0.25)  [히스테리시스 유지]
+#   CAUTION : wheel_to_line_m ≤ caution_dist_m (0.45)  [진입, DANGER 아닐 때]
+#             wheel_to_line_m ≤ caution_exit_dist_m (0.55)  [히스테리시스 유지]
+#   SAFE    : wheel_to_line_m > caution_exit_dist_m (0.55)  (CAUTION 래치 해제 후)
+#
 # fill_alpha: 주행영역 반투명 초록 폴리곤 불투명도 (0.0=완전 투명 / 1.0=완전 불투명).
 #   0.3 = 원본 영상이 비치면서도 초록 영역이 식별 가능한 밸런스.
 # banner_height: 경고 ON 시 화면 상단 빨강 배너 높이 (px). 50은 960×540에서 글자 1줄 여유.
 #
-# 3-state 위험 시각화 (warn_off / warn_on 경계를 그대로 재사용):
-#   SAFE    : |offset| < warn_off  → 초록 영역 (기존과 동일)
-#   CAUTION : warn_off ≤ |offset| < warn_on (히스테리시스 유지 구간) → 황색 영역 + 상단 띠
-#   DANGER  : warning latched ON  → 적색 영역 + 플래시 테두리 + 중앙 대형 배너 + 방향화살표
-#
-# gauge_*: 화면 하단 오프셋 게이지 (공통, 3-state 모두 표시)
+# gauge_*: 화면 하단 게이지 (공통, 3-state 모두 표시)
 #   gauge_height_px  : 게이지 바 높이 (px)
 #   gauge_h_margin   : 좌우 여백 (px)
 #   gauge_b_margin   : 하단 여백 — HUD 텍스트와 겹치지 않게 (px)
 #   gauge_marker_r   : 차량 위치 마커 반경 (px)
 #
-# border_px: DANGER 플래시 테두리 두께 (px). 큼직할수록 위험 강조.
+# border_px: DANGER 플래시 테두리 두께 (px).
 #
 # 색상 (BGR):
-#   caution_fill   : 황색 주행영역 채움
-#   caution_strip  : 황색 상단 띠 배경
-#   danger_fill    : 적색 주행영역 채움
+#   caution_fill    : 황색 주행영역 채움
+#   caution_strip   : 황색 상단 띠 배경
+#   danger_fill     : 적색 주행영역 채움
 #   danger_banner_bg: DANGER 배너 배경 (진한 적색)
-#   danger_border  : 플래시 테두리 색
+#   danger_border   : 플래시 테두리 색
 #
 # LDW DEMO 드리프트 파라미터 (--ldw-demo 플래그 시에만 적용):
-#   demo_drift_amplitude: 최대 드리프트 오프셋 (normalized). warn_on(0.35) 보다 충분히 크게.
-#     0.55 → 피크 |offset|=0.55, warn_on=0.35 보다 0.2 여유. CAUTION·DANGER 구간 명확.
+#   demo_drift_amplitude: 최대 드리프트 정규화 오프셋.
+#     0.55 → 피크 wheel_to_line ≈ -0.07 m (DANGER 진입 0.15 m 기준 충분히 초과).
+#             CAUTION 구간(0.15~0.45 m)도 통과함.
 #   demo_drift_period_frames: 드리프트 1주기 프레임 수.
-#     340 → ~27s 클립(680프레임)에서 정확히 2주기. LEFT DANGER → SAFE → RIGHT DANGER → SAFE.
+#     340 → ~27s 클립(680프레임)에서 정확히 2주기. LEFT → SAFE → RIGHT → SAFE.
 LDW = {
-    "warn_on":       0.35,   # 절댓값 오프셋이 이 이상이면 경고 ON
-    "warn_off":      0.25,   # 절댓값 오프셋이 이 미만이면 경고 OFF (히스테리시스)
-    "lane_width_m":  3.7,    # 차선폭(미터) — 미터 환산용 (현재 정규화 오프셋에서 선택 사용)
+    # ── 물리 기반 차량/차선 상수 ──
+    "lane_width_m":   3.7,   # 미국 고속도로 표준 차선폭 (m)
+    "vehicle_width_m": 1.8,  # 승용차 대표 차폭 (m)
+    # ── 휠-차선 거리 임계 (m) ──
+    "danger_dist_m":       0.15,  # DANGER 진입: wheel_to_line ≤ 0.15 m
+    "danger_exit_dist_m":  0.25,  # DANGER 해제: wheel_to_line > 0.25 m (히스테리시스)
+    "caution_dist_m":      0.45,  # CAUTION 진입: wheel_to_line ≤ 0.45 m
+    "caution_exit_dist_m": 0.55,  # CAUTION 해제: wheel_to_line > 0.55 m (히스테리시스; SAFE 복귀)
+    # ── 레거시 호환 키 (읽기 전용, 상태 판정에 사용 안 함) ──
+    "warn_on":       0.35,   # [레거시 — 물리 모델로 대체됨. 읽기 참조용 보존]
+    "warn_off":      0.25,   # [레거시 — 물리 모델로 대체됨. 읽기 참조용 보존]
     "fill_alpha":    0.30,   # 주행영역 폴리곤 투명도 (addWeighted 에서 src1 가중치)
     "banner_height": 50,     # 경고 배너 높이 (px)
     "banner_alpha":  0.75,   # 경고 배너 배경 불투명도 (1−alpha = 배경 비침 정도)
                              # 0.75: 빨강 배너가 선명하면서도 하단 영상이 약간 비침
     # ── 3-state 위험 시각화 ──
-    "caution_fill":        (0, 220, 220),   # 황색 주행영역 채움 (BGR: 시안-노랑)
+    "caution_fill":        (0, 200, 255),   # 황색 주행영역 채움 (BGR: 순수 황색, 시안보다 선명)
+    "caution_fill_alpha":  0.55,            # CAUTION 폴리곤 불투명도 — SAFE(0.30)보다 높여 선명하게
     "danger_fill":         (0, 0, 200),     # 적색 주행영역 채움 (BGR)
-    "caution_strip_h":     36,              # CAUTION 상단 띠 높이 (px)
-    "caution_strip_color": (0, 200, 220),   # 황색 상단 띠 배경 (BGR)
+    "caution_strip_h":     44,              # CAUTION 상단 띠 높이 (px) — 텍스트 여유 증가
+    "caution_strip_color": (0, 180, 255),   # 황색 상단 띠 배경 (BGR, 순수 황색)
+    "caution_strip_alpha": 0.90,            # CAUTION 띠 불투명도 — 선명하게
     "danger_banner_bg":    (0, 0, 180),     # DANGER 대형 배너 배경 (BGR, 진한 적색)
     "danger_banner_h":     64,             # DANGER 배너 높이 (px) — 2줄 텍스트 여유
     "danger_border_color": (0, 0, 255),     # 플래시 테두리 색 (BGR, 순수 적색)
