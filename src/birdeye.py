@@ -93,3 +93,29 @@ def unwarp(img: np.ndarray, clip: str) -> np.ndarray:
     _, Minv = matrix(clip)
     W, H = _frame_size(clip)
     return cv2.warpPerspective(img, Minv, (W, H))
+
+
+def unwarp_points(pts: np.ndarray, clip: str) -> np.ndarray:
+    """
+    탑다운(워프) 좌표계의 포인트 배열을 원래 원근 좌표계로 역변환한다.
+
+    이미지 전체를 워핑하는 unwarp()와 달리, 이 함수는 점 좌표만 변환한다.
+    cv2.perspectiveTransform을 사용하며 Minv (역변환 행렬)를 적용.
+
+    Args:
+        pts : 탑다운 좌표의 점 배열. shape: (N, 2) float32 또는 int.
+              내부적으로 (N, 1, 2) float32로 reshape해서 cv2.perspectiveTransform에 전달.
+        clip: config.CLIPS의 키.
+
+    Returns:
+        원근 복원된 점 배열. shape: (N, 2) float32.
+
+    사용 예:
+        warped_pts = np.array([[x1, y1], [x2, y2], ...], dtype=np.float32)
+        orig_pts = birdeye.unwarp_points(warped_pts, clip)
+        poly_pts = orig_pts.astype(np.int32)  # fillPoly용
+    """
+    _, Minv = matrix(clip)
+    pts_f = np.array(pts, dtype=np.float32).reshape(-1, 1, 2)
+    transformed = cv2.perspectiveTransform(pts_f, Minv)
+    return transformed.reshape(-1, 2)

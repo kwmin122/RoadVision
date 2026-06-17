@@ -129,8 +129,38 @@ BIRDEYE_PIP = {
     "label_color":  (255, 255, 255),  # 레이블 텍스트 색 BGR
 }
 
-# --- 곡선 슬라이딩 윈도우 (M6, project_video) ---  TODO-TUNE
+# --- 곡선 슬라이딩 윈도우 (M6, project_video) ---
 SLIDING_WINDOW = {"n_windows": 9, "margin": 80, "minpix": 50}
+
+# --- 곡선 유효성 검사 임계 (M6 fail-safe 게이트) ---
+# 클립 이름 분기 없이 데이터 기반으로만 CURVE vs STRAIGHT(fallback) 결정.
+#
+# min_pixels_per_side: 폴리핏 최소 픽셀 수. 슬라이딩 윈도우가 이 수 미만이면
+#   해당 측 None 반환 → is_valid() False → fallback.
+#   50 = SLIDING_WINDOW["minpix"]와 같은 수준. 너무 낮으면 노이즈 폴리.
+#
+# min_lane_width_px: 탑다운 공간에서 최소 차선 폭 (픽셀).
+#   두 폴리가 너무 가까우면 교차 직전이거나 오검 → fallback.
+#   100px = 960×540 bird-eye 기준 약 20% 폭. 실측으로 확인.
+#
+# max_lane_width_px: 탑다운 공간에서 최대 차선 폭 (픽셀).
+#   폭이 과도하게 넓으면 한쪽 폴리가 잘못된 픽셀에 끌린 것 → fallback.
+#   600px = 960폭 기준 62.5%. 좌(240)~우(720)dst 범위 480px보다 여유.
+#
+# max_poly_a: 이차항 계수 |a| 최대값. 단위: x픽셀/y픽셀².
+#   값이 클수록 심한 U자형. 실제 도로 곡선은 아주 완만함.
+#   0.003 = 1280×720 클립에서 합리적 상한 (실측 도로 최대 곡률 참조).
+#
+# y_sample_count: 폴리 샘플링 포인트 수.
+#   유효성 검사와 curved_lane_points에서 동일하게 사용.
+#   50개면 y축 전체를 충분히 촘촘히 샘플링 (부드러운 곡선).
+CURVE_VALIDITY = {
+    "min_pixels_per_side": 500,    # 폴리핏 최소 픽셀 수
+    "min_lane_width_px":   100,    # 탑다운 공간 최소 차선 폭 (px)
+    "max_lane_width_px":   700,    # 탑다운 공간 최대 차선 폭 (px)
+    "max_poly_a":          0.003,  # 이차항 계수 최대 절댓값 (과도한 곡률 거부)
+    "y_sample_count":      50,     # 폴리 평가 샘플 수 (유효성 + 포인트 생성 공용)
+}
 
 # --- 차량 보너스 (M7, forward-ROI Haar) ---  TODO-TUNE
 VEHICLE = {"cascade_path": None, "scale_factor": 1.1, "min_neighbors": 3,

@@ -146,6 +146,8 @@ def draw_hud(
     n_segs: int,
     left_state: str,
     right_state: str,
+    curve_mode: str | None = None,
+    curvature_r: float | None = None,
 ) -> None:
     """
     화면 좌하단 HUD: 오프셋 수치 + 경고 상태 + 프레임 정보.
@@ -155,6 +157,11 @@ def draw_hud(
       - L:<state_abbr>  R:<state_abbr>  segs:<n>
       - offset: -0.12  (또는 N/A)
       - WARN: OFF | LEFT | RIGHT
+      - MODE: CURVE  (또는 STRAIGHT(fallback))  ← M6 추가, None이면 미표시
+      - Radius: 1234px  ← curve_mode="CURVE" 일 때만 표시
+
+    curve_mode: "CURVE" | "STRAIGHT(fallback)" | None (None이면 M6 HUD 숨김)
+    curvature_r: 곡률 반경 (픽셀), curve_mode="CURVE"일 때만 의미 있음
     """
     H, W = frame.shape[:2]
 
@@ -169,7 +176,7 @@ def draw_hud(
     warn_str = f"{side}" if (warning and side) else "OFF"
     warn_color = _RED_LINE if warning else _GREEN_LINE
 
-    lines = [
+    lines: list[tuple[str, tuple[int, int, int]]] = [
         (f"frame {frame_no}/{total_frames}  "
          f"L:{_abbr.get(left_state, left_state)}  "
          f"R:{_abbr.get(right_state, right_state)}  "
@@ -178,6 +185,14 @@ def draw_hud(
         (f"offset: {off_str}", _YELLOW_HUD),
         (f"WARN: {warn_str}", warn_color),
     ]
+
+    # M6 추가 HUD 행 (curve_mode가 None이 아닐 때만)
+    if curve_mode is not None:
+        mode_color = _YELLOW_HUD if curve_mode == "CURVE" else _WHITE
+        lines.append((f"MODE: {curve_mode}", mode_color))
+        if curve_mode == "CURVE" and curvature_r is not None:
+            r_str = f"{curvature_r:.0f}px" if curvature_r < 9_000_000 else "straight"
+            lines.append((f"Radius: {r_str}", _YELLOW_HUD))
 
     font       = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.65
@@ -191,6 +206,46 @@ def draw_hud(
         # 검정 외곽선으로 가독성 확보
         cv2.putText(frame, text, (x0, y), font, font_scale, _BLACK, thickness + 1, cv2.LINE_AA)
         cv2.putText(frame, text, (x0, y), font, font_scale, color,  thickness,     cv2.LINE_AA)
+
+
+def draw_curved_area(
+    frame: np.ndarray,
+    polygon: np.ndarray,
+    left_pts: np.ndarray,
+    right_pts: np.ndarray,
+) -> None:
+    """
+    곡선 주행 가능 영역을 반투명 초록 폴리곤으로 채우고 양쪽 차선 곡선을 그린다 (in-place).
+
+    Args:
+        frame    : 출력 프레임 (BGR, in-place 수정).
+        polygon  : curve.curved_lane_points()의 unwarped 폴리곤 (shape: (2N, 2) int32).
+                   fillPoly용. 좌측 위→아래 + 우측 아래→위 순서.
+        left_pts : 왼쪽 차선 곡선 포인트 (shape: (N, 2) int32). polylines용.
+        right_pts: 오른쪽 차선 곡선 포인트 (shape: (N, 2) int32). polylines용.
+
+    fill_alpha: config.LDW["fill_alpha"] (직선 오버레이와 동일 설정).
+    """
+    alpha = config.LDW["fill_alpha"]
+
+    # 반투명 초록 폴리곤 (drivable area)
+    overlay = frame.copy()
+    cv2.fillPoly(overlay, [polygon.reshape((-1, 1, 2))], _GREEN_FILL)
+    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+
+    # 차선 곡선 (실선, 초록)
+    cv2.polylines(frame,
+                  [left_pts.reshape((-1, 1, 2))],
+                  isClosed=False,
+                  color=_GREEN_LINE,
+                  thickness=_LINE_THICKNESS,
+                  lineType=cv2.LINE_AA)
+    cv2.polylines(frame,
+                  [right_pts.reshape((-1, 1, 2))],
+                  isClosed=False,
+                  color=_GREEN_LINE,
+                  thickness=_LINE_THICKNESS,
+                  lineType=cv2.LINE_AA)
 
 
 def draw_birdeye_pip(
@@ -278,27 +333,39 @@ def render_frame(
     n_segs: int,
     left_state: str,
     right_state: str,
+    draw_area: bool = True,
+    draw_lines: bool = True,
+    curve_mode: str | None = None,
+    curvature_r: float | None = None,
 ) -> None:
     """
     한 프레임에 모든 오버레이를 합성한다 (in-place).
 
     순서:
-      1. 주행영역 반투명 폴리곤 (양쪽 차선이 있을 때만)
-      2. 차선선 (경고 방향은 빨강)
+      1. 주행영역 반투명 폴리곤 (draw_area=True이고 양쪽 차선이 있을 때만)
+      2. 차선선 (draw_lines=True일 때만; 경고 방향은 빨강)
       3. 경고 배너 (warning ON 시만)
       4. HUD
+
+    M6 파라미터 (기본값=None → 기존 동작 유지):
+      draw_area    : False이면 직선 주행영역 폴리곤 스킵 (곡선 모드에서 사용).
+      draw_lines   : False이면 직선 차선선 스킵 (곡선 모드에서 사용).
+      curve_mode   : "CURVE" | "STRAIGHT(fallback)" | None. HUD에 표시.
+      curvature_r  : 곡률 반경 (픽셀). curve_mode="CURVE"일 때 HUD에 표시.
     """
-    # 1. 주행영역 폴리곤
-    if left_fit is not None and right_fit is not None:
+    # 1. 주행영역 폴리곤 (STRAIGHT 모드 또는 fallback 모드에서만)
+    if draw_area and left_fit is not None and right_fit is not None:
         draw_drivable_area(frame, left_fit, right_fit, y_bottom, y_top)
 
-    # 2. 차선선 (폴리곤 위에 그려야 선이 보임)
-    draw_lane_lines_ldw(frame, left_fit, right_fit, y_bottom, y_top, warning, side)
+    # 2. 차선선 (STRAIGHT 모드 또는 fallback 모드에서만)
+    if draw_lines:
+        draw_lane_lines_ldw(frame, left_fit, right_fit, y_bottom, y_top, warning, side)
 
     # 3. 경고 배너
     if warning and side is not None:
         draw_ldw_banner(frame, side)
 
-    # 4. HUD
+    # 4. HUD (curve_mode/curvature_r 전달)
     draw_hud(frame, off, warning, side,
-             frame_no, total_frames, n_segs, left_state, right_state)
+             frame_no, total_frames, n_segs, left_state, right_state,
+             curve_mode=curve_mode, curvature_r=curvature_r)

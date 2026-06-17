@@ -42,6 +42,7 @@ from src.smoothing import LaneSmoother, VALID_STATES
 from src import departure as dep
 from src import overlay as ov
 from src import birdeye
+from src import curve as curvemod
 
 
 def _roi_y_top(W: int, H: int, clip_key: str) -> int:
@@ -140,10 +141,14 @@ def main() -> None:
         "right": {s: 0 for s in VALID_STATES},
     }
 
+    # M6 곡선 모드 카운터 (CURVE / fallback 프레임 수 집계)
+    curve_frame_counts = {"CURVE": 0, "STRAIGHT(fallback)": 0}
+
     # 디버그 프레임 저장 여부 추적
     saved_ldw_off   = False
     saved_ldw_on    = False
     saved_birdeye   = False
+    saved_curve_pv  = set()  # project_video 곡선 디버그 프레임 저장 번호 집합
 
     # bird-eye 디버그 프레임 번호: project_video는 직선 구간인 100번 프레임 사용
     birdeye_debug_frame = 100 if clip_key == "project_video" else 130
@@ -203,19 +208,86 @@ def main() -> None:
         # Bird-eye 워프 — render_frame 전에 깨끗한 원본 프레임에서 계산 (오버레이 없는 탑다운)
         warped_frame = birdeye.warp(frame, clip_key)
 
+        # ── M6 곡선 슬라이딩 윈도우 (fail-safe: 실패 시 직선 fallback) ──────────────
+        # 주의: 아래 블록은 CSV·state_counts·smoother·off·LDW를 절대 수정하지 않음.
+        #       오버레이 렌더링 방식만 결정한다.
+        curve_mode   : str | None     = None
+        curvature_r  : float | None   = None
+        curve_polygon: np.ndarray | None = None
+        curve_left   : np.ndarray | None = None
+        curve_right  : np.ndarray | None = None
+
+        try:
+            lmask_warped = preprocess.lane_mask(frame)  # 원본 컬러 마스크 재계산 (오버레이 전)
+            warped_mask  = birdeye.warp(lmask_warped, clip_key)
+
+            left_poly, right_poly = curvemod.sliding_window_fit(warped_mask)
+
+            if curvemod.is_valid(left_poly, right_poly, warped_mask):
+                polygon, l_pts, r_pts = curvemod.curved_lane_points(
+                    left_poly, right_poly, height, clip_key
+                )
+                # 곡률반경: 하단 (y = H-1) 기준
+                r_left  = curvemod.curvature_radius(left_poly,  height - 1)
+                r_right = curvemod.curvature_radius(right_poly, height - 1)
+                avg_r   = (r_left + r_right) / 2.0
+
+                curve_mode    = "CURVE"
+                curvature_r   = avg_r
+                curve_polygon = polygon
+                curve_left    = l_pts
+                curve_right   = r_pts
+            else:
+                curve_mode = "STRAIGHT(fallback)"
+        except Exception:
+            # 예외 발생 시 항상 fallback — Core 보호
+            curve_mode = "STRAIGHT(fallback)"
+
+        # 카운터 누적
+        if curve_mode in curve_frame_counts:
+            curve_frame_counts[curve_mode] += 1
+        # ── M6 끝 ──────────────────────────────────────────────────────────────────
+
         # 9. 오버레이 합성 (in-place)
-        ov.render_frame(
-            frame,
-            smoothed_left, smoothed_right,
-            y_bottom, y_top,
-            off, warning, side,
-            frames_read, total,
-            len(segments),
-            left_state, right_state,
-        )
+        if curve_mode == "CURVE" and curve_polygon is not None:
+            # CURVE 모드: 곡선 drivable area + 곡선 차선선 먼저, 배너+HUD는 render_frame
+            ov.draw_curved_area(frame, curve_polygon, curve_left, curve_right)
+            ov.render_frame(
+                frame,
+                smoothed_left, smoothed_right,
+                y_bottom, y_top,
+                off, warning, side,
+                frames_read, total,
+                len(segments),
+                left_state, right_state,
+                draw_area=False,        # 직선 폴리곤 스킵 (곡선으로 대체)
+                draw_lines=False,       # 직선 차선선 스킵 (곡선으로 대체)
+                curve_mode=curve_mode,
+                curvature_r=curvature_r,
+            )
+        else:
+            # STRAIGHT(fallback) 모드: 기존 직선 파이프라인 그대로
+            ov.render_frame(
+                frame,
+                smoothed_left, smoothed_right,
+                y_bottom, y_top,
+                off, warning, side,
+                frames_read, total,
+                len(segments),
+                left_state, right_state,
+                curve_mode=curve_mode,  # "STRAIGHT(fallback)" 또는 None
+            )
 
         # Bird-eye PiP 합성 (render_frame 이후, 오버레이된 프레임 우상단에 삽입)
         ov.draw_birdeye_pip(frame, warped_frame)
+
+        # M6 project_video 곡선 디버그 프레임 저장 (frames/curve_pv_{n}.png)
+        _CURVE_PV_FRAMES = {1000, 1030, 1060}
+        if frames_read in _CURVE_PV_FRAMES and frames_read not in saved_curve_pv:
+            pv_path = os.path.join(config.FRAMES_DIR, f"curve_pv_{frames_read}.png")
+            cv2.imwrite(pv_path, frame)
+            saved_curve_pv.add(frames_read)
+            print(f"  [curve-pv] {pv_path} 저장 (mode={curve_mode})")
 
         # 10. 디버그 프레임 저장
         if frames_read == debug_frame_idx:
@@ -332,6 +404,12 @@ def main() -> None:
         print(f"    consecutive_missing : {mis:4d}  ({mis/total_frames*100:.1f}%)")
         print(f"    합계 검증           : {raw+rej+hld+mis} / {total_frames}"
               f"  {'OK' if raw+rej+hld+mis == total_frames else '*** MISMATCH ***'}")
+
+    # M6 곡선 모드 집계 보고
+    print("\n=== M6 곡선 모드 집계 ===")
+    for mode_name, cnt in curve_frame_counts.items():
+        pct = cnt / frames_read * 100 if frames_read else 0.0
+        print(f"  {mode_name:25s}: {cnt:5d}프레임 ({pct:.1f}%)")
 
     print("\n=== 처리 완료 ===")
     print(f"  입력 경로  : {input_path}")
