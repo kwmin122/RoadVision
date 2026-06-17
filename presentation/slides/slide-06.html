@@ -24,7 +24,7 @@
         <ul class="bullets bullets--lg">
           <li>흰색 <strong>점선 차선</strong>: 색상 마스크 ∩ Canny → 조각조각 끊김</li>
           <li>초기 우측 차선 검출률: <strong>64%</strong></li>
-          <li>직전 값 덮어쓰기(홀드)로 가리는 것은 <strong>보정이 아님</strong></li>
+          <li>끊긴 조각들이 Hough 최소 선분 길이 기준 미달 → 선분 미검출</li>
         </ul>
       </div>
 
@@ -33,14 +33,14 @@
       <div>
         <div style="font-size:16px; font-weight:800; color:var(--ink); margin-bottom:10px;">해결</div>
         <ul class="bullets bullets--lg">
-          <li><strong>모폴로지 클로징</strong> (7강) — 세로로 긴 구조 요소로 점선 이음</li>
-          <li>실제 검출 픽셀 증가 → 보정 없이 연속 검출</li>
+          <li><strong>모폴로지 클로징</strong> (7강) — 세로로 긴 구조 요소로 점선 조각 연결</li>
+          <li>연결된 픽셀 덩어리 → Hough가 안정적으로 선분 검출</li>
         </ul>
       </div>
 
       <div class="accent-box" style="margin-top:8px;">
         모폴로지 클로징 적용 →<br>우측 검출 <strong>64% → 100%</strong><br>
-        <span style="font-size:13px; font-weight:400; opacity:.85;">보정(홀드) 아닌 실제 검출 증가</span>
+        <span style="font-size:13px; font-weight:400; opacity:.85;">픽셀 연결로 검출 가능 선분 증가</span>
       </div>
     </div>
 
@@ -60,6 +60,6 @@
   </div>
 
 </div>
-<!-- NOTES: 여기서 한 가지 문제를 정직하게 짚고 넘어가겠습니다. 흰색 점선 차선은 색상과 엣지를 교집합하면 조각조각 끊깁니다. 그래서 처음에는 검출률이 64퍼센트밖에 안 나왔습니다. 이걸 직전 값으로 덮어서 가리는 대신, 7강의 모폴로지 클로징을 세로로 길게 적용해 점선의 끊긴 부분을 이어 붙였습니다. 그 결과 양쪽 클립 모두 검출률이 100퍼센트로 올라갔고, 이건 보정이 아니라 실제 검출이 늘어난 결과입니다. -->
+<!-- NOTES: 흰색 점선 차선은 색상과 엣지를 교집합하면 조각조각 끊깁니다. 처음에는 검출률이 64퍼센트밖에 안 나왔습니다. 7강의 모폴로지 클로징을 세로로 길게 적용해 점선의 끊긴 조각들을 이어 붙이자, Hough가 안정적으로 선분을 잡아냈고 양쪽 클립 모두 검출률이 100퍼센트로 올라갔습니다. -->
 </body>
 </html>
