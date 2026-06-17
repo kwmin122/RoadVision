@@ -168,6 +168,11 @@ wheel_to_line_m = (half_lane − half_car) − lateral_m
 >
 > **(b) 카메라 중심 가정** — `car_center_x = W/2`는 카메라가 차량 횡방향 정중앙에 장착됐다는 가정. 카메라 위치가 치우쳐 있으면 오프셋에 상수 편향이 생기고 휠-차선 거리가 과대/과소 추정됨.
 
+### 베이스라인 보정 (편향 영점조정 — 정직성)
+- **문제**: 실측 결과 정상 주행에서도 `offset_norm` 평균이 0이 아님(solidYellowLeft −0.08, project_video −0.15). 차는 중앙인데 시스템이 "치우침"으로 봐 가짜 CAUTION 발생(project_video 2.3%).
+- **보정**: `BaselineCalibrator`가 **초기 `BASELINE_FRAMES=30`프레임(양 차선 검출 시)의 median offset = 상수 편향**을 추정해 이후 모든 오프셋에서 차감 → "정상 차로유지 ≈ 0". 보정 후 3클립 CAUTION/DANGER = 0.
+- **가정·한계**: "차량이 초기 구간에 차로 중앙을 주행한다"를 전제. 30프레임 윈도가 클립 전체 편향을 과대추정할 수 있음(project_video 보정후 평균 +0.08, 최악 휠-차선 0.50m로 SAFE 유지). 이는 *상수 편향 제거*일 뿐 **이탈을 주입/위조하지 않음** — `raw_detected`·스무딩·CSV는 보정 전 값 사용해 무영향.
+
 ### 시각화
 - 오프셋 게이지 및 HUD에 `wheel->line: X.XX m  ~approx(uncalibrated)` 및 `offset_m` 표시.
 - SAFE=초록 / CAUTION=황색 영역(선명)+상단 황색 띠 / DANGER=적색 영역+플래시 테두리+대형 배너+방향 화살표.
