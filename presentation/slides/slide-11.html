@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 11 — 결과·한계·결론</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">11</span>
+    <h2>결과 · 한계 · 결론</h2>
+    <span class="sidebar-tag">Results &amp; Conclusion</span>
+  </div>
+
+  <div class="slide-body slide-body--row" style="padding-bottom:40px;">
+
+    <!-- LEFT: metric cards + closing -->
+    <div class="col col--55" style="justify-content:space-between;">
+      <!-- 3 metric cards -->
+      <div class="stat-row">
+        <div class="card">
+          <div class="card-label">C2 직선 검출률</div>
+          <div class="card-value">100%</div>
+          <div class="card-desc">좌/우 차선 모두<br>2개 클립 달성</div>
+        </div>
+        <div class="card">
+          <div class="card-label">LDW 검증</div>
+          <div class="card-value">C4</div>
+          <div class="card-desc">합성 이동 테스트<br>이탈 경고 정상 동작</div>
+        </div>
+        <div class="card">
+          <div class="card-label">처리 속도</div>
+          <div class="card-value">115fps</div>
+          <div class="card-desc">직선 파이프라인<br>곡선 포함 70fps</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Limit -->
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">한계 — 차량 검출</div>
+        <ul class="bullets">
+          <li>고전 기법 차량 후보: <strong>7% FP</strong> 프레임 — 대부분 도로 질감 오검출</li>
+          <li>이 한계가 <strong>딥러닝이 필요한 이유</strong></li>
+        </ul>
+      </div>
+
+      <div class="closing-line" style="margin-top:8px;">
+        고전 CV만으로 ADAS 핵심 기능을<br><strong>안정적으로 완성</strong>
+      </div>
+    </div>
+
+    <!-- RIGHT: vehicle image -->
+    <div class="col col--40" style="align-items:center; justify-content:center;">
+      <div class="img-frame" style="width:100%; height:320px;">
+        <img src="../assets/st11_vehicle.png" alt="차량 검출 한계">
+      </div>
+      <div class="caption" style="margin-top:6px;">차량 검출: 7% 프레임 FP — "딥러닝이 필요한 이유"</div>
+      <div class="accent-box--light accent-box" style="margin-top:10px; font-size:13px; width:100%;">
+        <strong>감사합니다</strong> — RoadVision
+      </div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">11 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 정리하면, 직선 두 클립에서 좌우 차선 검출률 100퍼센트를 달성했고, 차선 이탈 경고는 합성 이동 테스트로 따로 검증했습니다. 차량 검출도 실험해 봤지만, 고전 기법으로는 7퍼센트의 프레임에서만 후보가 잡혔고 대부분 도로 질감 오검출이었습니다. 이 한계가 바로 딥러닝이 필요한 이유입니다. 고전 컴퓨터비전만으로도 차선 인식과 이탈 경고라는 ADAS 핵심 기능을 안정적으로 완성할 수 있었습니다. 감사합니다. -->
+</body>
+</html>

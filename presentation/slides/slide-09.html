@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 09 — 곡선 차선</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">09</span>
+    <h2>곡선 차선 — 슬라이딩 윈도우 + 2차 폴리핏</h2>
+    <span class="sidebar-tag">Curve Lane · Core-plus</span>
+  </div>
+
+  <div class="slide-body slide-body--row">
+
+    <!-- LEFT: sliding window explanation -->
+    <div class="col col--55" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">문제: Hough는 커브에 약함</div>
+        <ul class="bullets bullets--lg">
+          <li>직선 Hough → 커브 구간에서 차선 분리 실패</li>
+          <li>버드아이 뷰에서 <strong>슬라이딩 윈도우</strong>로 차선 픽셀 수집</li>
+          <li><strong>2차 폴리핏</strong>으로 도로 곡선에 맞게 피팅</li>
+          <li>주행 영역이 도로 휨을 따라 곡선으로 표시</li>
+        </ul>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">Fail-safe 설계</div>
+        <ul class="bullets bullets--lg">
+          <li>곡선 피팅 불안정 → <strong>직선 방식으로 안전 복귀</strong></li>
+          <li>결과 영상은 <strong>어떤 경우에도 항상 생성</strong></li>
+        </ul>
+      </div>
+
+      <div class="accent-box" style="margin-top:auto;">
+        곡선 실패 시 직선으로 안전 복귀 —<br><strong>영상은 항상 생성</strong>
+      </div>
+    </div>
+
+    <!-- RIGHT: curve image -->
+    <div class="col col--40" style="align-items:center; justify-content:center;">
+      <div class="img-frame" style="width:100%; height:370px;">
+        <img src="../assets/st10_curve.png" alt="곡선 차선 추종">
+      </div>
+      <div class="caption">슬라이딩 윈도우 + 2차 폴리핏 곡선 추종</div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">09 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 직선 Hough는 커브에 약합니다. 그래서 버드아이 뷰에서 슬라이딩 윈도우로 차선 픽셀을 모으고 2차 곡선으로 피팅해, 주행 영역이 도로의 휜 정도를 따라가게 만들었습니다. 만약 곡선 피팅이 불안정하면 기존 직선 방식으로 안전하게 되돌아가서, 결과 영상은 어떤 경우에도 항상 생성됩니다. -->
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 05 — 차선 검출</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <!-- HEADER -->
+  <div class="slide-header">
+    <span class="section-badge">05</span>
+    <h2>차선 검출 — 색상필터 → Canny → Hough → 폴리핏</h2>
+    <span class="sidebar-tag">Detection Pipeline</span>
+  </div>
+
+  <!-- BODY: left bullets + right 4-image grid -->
+  <div class="slide-body slide-body--row">
+
+    <!-- LEFT: technique bullets -->
+    <div class="col col--40" style="justify-content:space-between;">
+      <ul class="bullets bullets--lg">
+        <li><strong>HSV inRange</strong> — 흰색·노란색 차선 후보 마스크</li>
+        <li><strong>Canny</strong> — 엣지 검출 후 마스크와 결합</li>
+        <li><strong>HoughLinesP</strong> — 선분 검출, 기울기로 좌/우 분리</li>
+        <li><strong>길이가중 1차 폴리핏</strong> — 좌우 각각 단일 직선으로 수렴</li>
+      </ul>
+      <div class="accent-box--light accent-box" style="margin-top:auto;">
+        색상 마스크 + Canny 엣지 교집합<br>→ 노이즈 최소화, 차선 픽셀만 추출
+      </div>
+    </div>
+
+    <!-- RIGHT: 4-image grid -->
+    <div class="col col--55" style="flex:1; min-height:0;">
+      <div class="img-grid-4">
+        <div class="grid-cell">
+          <img src="../assets/st02_colormask.png" alt="HSV 색상 마스크">
+          <div class="grid-label">HSV 흰/노랑 마스크</div>
+        </div>
+        <div class="grid-cell">
+          <img src="../assets/st03_canny.png" alt="Canny 엣지">
+          <div class="grid-label">Canny 엣지</div>
+        </div>
+        <div class="grid-cell">
+          <img src="../assets/st05_hough.png" alt="Hough 선분 + ROI">
+          <div class="grid-label">HoughLinesP + ROI</div>
+        </div>
+        <div class="grid-cell">
+          <img src="../assets/st07_ldw_area.png" alt="폴리핏 결과">
+          <div class="grid-label">폴리핏 차선</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">05 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 검출 단계를 보겠습니다. 먼저 HSV 색공간에서 흰색과 노란색 범위로 차선 후보를 뽑습니다. 동시에 Canny로 엣지를 구하고, 둘을 결합해 차선처럼 보이는 영역만 남깁니다. 여기에 Hough 변환으로 선분을 검출하고, 기울기 부호로 좌우 차선을 나눕니다. 그다음 선분 길이를 가중치로 1차 폴리핏을 해서, 좌우 각각 하나의 깨끗한 직선으로 만듭니다. -->
+</body>
+</html>

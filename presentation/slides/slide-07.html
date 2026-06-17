@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 07 — 안정성: 시간평활 + 정직 로깅</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">07</span>
+    <h2>안정성 — 시간 평활 + 정직한 로깅</h2>
+    <span class="sidebar-tag">Stability &amp; Logging</span>
+  </div>
+
+  <div class="slide-body slide-body--row">
+
+    <!-- LEFT: temporal smoothing -->
+    <div class="col col--55" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:15px; font-weight:700; color:var(--blue); margin-bottom:8px; text-transform:uppercase; letter-spacing:.06em; font-size:12px;">시간 평활</div>
+        <ul class="bullets bullets--lg">
+          <li>최근 <strong>N=10 프레임</strong> 파라미터 이동 평균</li>
+          <li>차선 떨림 <strong>79%↓</strong> 감소</li>
+          <li>갑자기 튀는 값 → <strong>이상치 거부</strong> (표준편차 기반)</li>
+        </ul>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--blue); margin-bottom:8px; text-transform:uppercase; letter-spacing:.06em;">정직한 로깅 원칙</div>
+        <ul class="bullets">
+          <li>매 프레임 상태를 <strong>4가지</strong>로 분류·기록</li>
+          <li>평활된 값 = 검출 아님 → 검출률에 <strong>미포함</strong></li>
+          <li>검출률을 평활로 부풀릴 수 <strong>없게</strong> 설계</li>
+        </ul>
+      </div>
+
+      <div class="accent-box" style="margin-top:8px; font-size:14px;">
+        "검출률을 평활로 부풀릴 수 없게 <strong>raw만 집계</strong>"
+      </div>
+    </div>
+
+    <!-- RIGHT: 4-state log diagram -->
+    <div class="col col--40">
+      <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px;">4상태 프레임 로깅</div>
+      <div class="log-states">
+        <div class="log-state">
+          <div class="ls-name" style="color:#27ae60;">✓ raw</div>
+          <div class="ls-desc">실제 Hough+폴리핏으로<br>이번 프레임 직접 검출</div>
+        </div>
+        <div class="log-state">
+          <div class="ls-name" style="color:#e67e22;">⊙ held</div>
+          <div class="ls-desc">직전 값 유지<br>(검출 실패 시 UI 유지용)</div>
+        </div>
+        <div class="log-state">
+          <div class="ls-name" style="color:#e74c3c;">✗ rejected</div>
+          <div class="ls-desc">이상치 감지 → 폐기<br>(튐 방지)</div>
+        </div>
+        <div class="log-state">
+          <div class="ls-name" style="color:var(--muted);">— missing</div>
+          <div class="ls-desc">선분 미검출<br>(ROI 내 후보 없음)</div>
+        </div>
+      </div>
+
+      <div class="accent-box--light accent-box" style="margin-top:12px; font-size:13px;">
+        검출률 = <strong>raw 프레임 수</strong> / 전체 프레임
+      </div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">07 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 완성도의 핵심은 안정성입니다. 차선 파라미터를 최근 열 프레임으로 평균 내서 떨림을 약 79퍼센트 줄였고, 갑자기 튀는 값은 이상치로 걸러냈습니다. 중요한 건, 매 프레임마다 실제 검출인지, 직전 값 유지인지, 이상치 제거인지를 따로 기록했다는 점입니다. 그래서 검출률을 평활로 부풀릴 수 없게 만들었습니다. -->
+</body>
+</html>

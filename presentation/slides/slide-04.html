@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 04 — 파이프라인 개요</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  /* Two-row pipeline layout for slide-04 */
+  .pipeline-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pipeline-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .pipe-node {
+    flex: 1;
+    background: var(--blue-light);
+    border: 1.5px solid var(--blue);
+    border-radius: 8px;
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--blue-dark);
+    line-height: 1.3;
+    min-width: 0;
+  }
+
+  .pipe-node .pipe-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    display: block;
+    margin-top: 4px;
+  }
+
+  .pipe-arrow {
+    flex-shrink: 0;
+    color: var(--blue);
+    font-size: 20px;
+    padding: 0 5px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .pipe-node--highlight {
+    background: var(--blue);
+    color: var(--white);
+    border-color: var(--blue-dark);
+  }
+
+  .pipe-node--highlight .pipe-tag {
+    color: rgba(255,255,255,.6);
+  }
+
+  .pipe-row-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    white-space: nowrap;
+    width: 80px;
+    flex-shrink: 0;
+  }
+
+  .row-connector {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 0 0 80px;
+    font-size: 22px;
+    color: var(--blue);
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">04</span>
+    <h2>파이프라인 개요</h2>
+    <span class="sidebar-tag">System Overview</span>
+  </div>
+
+  <div class="slide-body" style="justify-content:space-between; padding-bottom:36px;">
+
+    <!-- Row 1: Input → Filter → ROI → Hough -->
+    <div class="pipeline-rows">
+      <div class="pipeline-row">
+        <div class="pipe-row-label">입력</div>
+        <div class="pipe-node pipe-node--highlight">
+          입력 프레임
+          <span class="pipe-tag">Video Input</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">
+          색상 필터<br>+ Canny
+          <span class="pipe-tag">HSV · Edge</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">
+          ROI 마스킹
+          <span class="pipe-tag">Region of Interest</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">
+          Hough 선분 검출
+          <span class="pipe-tag">HoughLinesP</span>
+        </div>
+      </div>
+
+      <!-- Arrow down connector -->
+      <div class="row-connector">↓</div>
+
+      <!-- Row 2: Split → Smooth → LDW → BirdEye -->
+      <div class="pipeline-row">
+        <div class="pipe-row-label">처리</div>
+        <div class="pipe-node">
+          좌우 분리<br>+ 폴리핏
+          <span class="pipe-tag">Lane Fit</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">
+          시간 평활<br>(N=10)
+          <span class="pipe-tag">Temporal Smooth</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-node--highlight">
+          LDW 이탈 경고
+          <span class="pipe-tag">Lane Departure</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">
+          버드아이 + 곡선
+          <span class="pipe-tag">BirdEye · Curve</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="accent-box--light accent-box" style="font-size:14px;">
+      전 단계가 <strong>매 프레임</strong> 실시간 실행 — 평활·이상치거부·fail-safe로 항상 결과 생성
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">04 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 전체 흐름은 이렇습니다. 입력 프레임에서 색상 필터와 Canny로 차선 후보를 뽑고, 관심 영역으로 도로만 남긴 뒤 Hough로 선분을 검출합니다. 좌우로 나눠 직선을 피팅하고, 프레임 사이에서 평활을 걸어 떨림을 없앤 다음, 차선 중앙과 차량 중심을 비교해 이탈을 경고합니다. 마지막으로 호모그래피로 버드아이 뷰와 곡선까지 처리합니다. -->
+</body>
+</html>

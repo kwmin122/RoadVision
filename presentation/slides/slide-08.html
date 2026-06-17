@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 08 — LDW + 버드아이</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">08</span>
+    <h2>차선 이탈 경고(LDW) + 버드아이 뷰</h2>
+    <span class="sidebar-tag">LDW &amp; Bird-Eye View</span>
+  </div>
+
+  <div class="slide-body slide-body--row">
+
+    <!-- LEFT: LDW explanation + image -->
+    <div class="col col--55" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">차선 이탈 경고 (LDW)</div>
+        <ul class="bullets bullets--lg">
+          <li>좌/우 차선 중앙 ↔ 화면 중심 비교 → <strong>정규화 오프셋</strong></li>
+          <li>히스테리시스 임계: 켜짐 <strong>0.35</strong> / 꺼짐 <strong>0.25</strong></li>
+          <li>경고가 <strong>깜빡이지 않는</strong> 안정적 on/off</li>
+        </ul>
+      </div>
+      <div class="img-frame" style="height:220px; width:100%; margin-top:8px;">
+        <img src="../assets/st08_ldw_warn.png" alt="LDW 경고 배너">
+      </div>
+      <div class="caption">차선 이탈 경고 배너 표시</div>
+    </div>
+
+    <!-- RIGHT: bird-eye explanation + image -->
+    <div class="col col--40" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">버드아이 뷰 (9강 호모그래피)</div>
+        <ul class="bullets">
+          <li>원근 투영 → <strong>탑다운 변환</strong></li>
+          <li>도로 기하를 왜곡 없이 표현</li>
+          <li>우측 상단에 실시간 미니맵 표시</li>
+        </ul>
+      </div>
+      <div class="img-frame" style="height:260px; width:100%; margin-top:8px;">
+        <img src="../assets/st09_birdeye.png" alt="버드아이 뷰">
+      </div>
+      <div class="caption">호모그래피 버드아이 뷰</div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">08 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 검출된 좌우 차선의 중앙과 화면 중심을 비교해 정규화된 오프셋을 구합니다. 이 값이 임계를 넘으면 이탈 경고를 띄우는데, 켜짐과 꺼짐 임계를 다르게 둬서 경고가 깜빡이지 않게 했습니다. 또 9강의 호모그래피로 도로를 위에서 내려다본 버드아이 뷰로 변환해, 우측 상단에 함께 보여줍니다. -->
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 06 — 점선 + 모폴로지</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">06</span>
+    <h2>핵심 문제 해결 — 점선 차선 + 모폴로지 클로징</h2>
+    <span class="sidebar-tag">Problem Solving</span>
+  </div>
+
+  <div class="slide-body slide-body--row">
+
+    <!-- LEFT: problem description -->
+    <div class="col col--55" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:16px; font-weight:800; color:var(--ink); margin-bottom:10px;">문제</div>
+        <ul class="bullets bullets--lg">
+          <li>흰색 <strong>점선 차선</strong>: 색상 마스크 ∩ Canny → 조각조각 끊김</li>
+          <li>초기 우측 차선 검출률: <strong>64%</strong></li>
+          <li>직전 값 덮어쓰기(홀드)로 가리는 것은 <strong>보정이 아님</strong></li>
+        </ul>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div style="font-size:16px; font-weight:800; color:var(--ink); margin-bottom:10px;">해결</div>
+        <ul class="bullets bullets--lg">
+          <li><strong>모폴로지 클로징</strong> (7강) — 세로로 긴 구조 요소로 점선 이음</li>
+          <li>실제 검출 픽셀 증가 → 보정 없이 연속 검출</li>
+        </ul>
+      </div>
+
+      <div class="accent-box" style="margin-top:8px;">
+        모폴로지 클로징 적용 →<br>우측 검출 <strong>64% → 100%</strong><br>
+        <span style="font-size:13px; font-weight:400; opacity:.85;">보정(홀드) 아닌 실제 검출 증가</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: lane mask image -->
+    <div class="col col--40" style="align-items:center; justify-content:center;">
+      <div class="img-frame" style="width:100%; height:360px;">
+        <img src="../assets/st04_lanemask.png" alt="차선 마스크 (모폴로지 적용 후)">
+      </div>
+      <div class="caption">모폴로지 클로징 후 차선 마스크</div>
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">06 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 여기서 한 가지 문제를 정직하게 짚고 넘어가겠습니다. 흰색 점선 차선은 색상과 엣지를 교집합하면 조각조각 끊깁니다. 그래서 처음에는 검출률이 64퍼센트밖에 안 나왔습니다. 이걸 직전 값으로 덮어서 가리는 대신, 7강의 모폴로지 클로징을 세로로 길게 적용해 점선의 끊긴 부분을 이어 붙였습니다. 그 결과 양쪽 클립 모두 검출률이 100퍼센트로 올라갔고, 이건 보정이 아니라 실제 검출이 늘어난 결과입니다. -->
+</body>
+</html>

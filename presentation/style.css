@@ -1,0 +1,523 @@
+/* RoadVision Presentation — Corporate Blue Design System */
+
+/* Font import — Google Fonts as CDN, with safe fallbacks */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap');
+
+:root {
+  --blue:       #2E5BBA;
+  --blue-dark:  #21407f;
+  --blue-light: #e8eef8;
+  --ink:        #1f2430;
+  --muted:      #5b6472;
+  --bg:         #ffffff;
+  --line:       #e3e8f0;
+  --white:      #ffffff;
+
+  --font: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --r: 8px;
+  --shadow: 0 2px 12px rgba(46,91,186,.10);
+}
+
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* ===== SLIDE WRAPPER ===== */
+.slide {
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+
+/* ===== TITLE SLIDE (slide-01) ===== */
+.slide--title {
+  background: var(--blue);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+}
+
+.slide--title .sidebar-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.55);
+  padding: 0 22px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.slide--title .title-body {
+  flex: 1;
+  padding: 60px 80px 60px 40px;
+}
+
+.slide--title .eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.6);
+  margin-bottom: 18px;
+}
+
+.slide--title h1 {
+  font-size: 88px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 22px;
+  letter-spacing: -.02em;
+}
+
+.slide--title .subtitle {
+  font-size: 20px;
+  font-weight: 400;
+  color: rgba(255,255,255,.80);
+  line-height: 1.5;
+  max-width: 620px;
+}
+
+.slide--title .arrow-deco {
+  position: absolute;
+  right: 60px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+.slide--title .arrow-deco span {
+  display: block;
+  width: 2px;
+  height: 60px;
+  background: rgba(255,255,255,.25);
+}
+
+.slide--title .arrow-deco::after {
+  content: '→';
+  font-size: 28px;
+  color: rgba(255,255,255,.40);
+}
+
+/* ===== STANDARD SLIDE LAYOUT ===== */
+.slide-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 60px 0;
+  border-bottom: 1.5px solid var(--line);
+  padding-bottom: 14px;
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--blue);
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 50%;
+  flex-shrink: 0;
+  letter-spacing: .01em;
+}
+
+.slide-header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -.01em;
+}
+
+.slide-header .sidebar-tag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-left: 1px solid var(--line);
+  padding-left: 14px;
+}
+
+/* ===== SLIDE CONTENT AREA ===== */
+.slide-body {
+  padding: 18px 60px 36px;
+  height: calc(720px - 76px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.slide-body--row {
+  flex-direction: row;
+  gap: 36px;
+  align-items: stretch;
+}
+
+/* ===== COLUMNS ===== */
+.col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.col--half { flex: 1; }
+.col--40 { flex: 0 0 40%; }
+.col--55 { flex: 0 0 55%; }
+.col--60 { flex: 0 0 58%; }
+.col--wide { flex: 0 0 62%; }
+
+/* ===== IMAGE ===== */
+.img-frame {
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.img-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ===== BULLETS ===== */
+ul.bullets {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+ul.bullets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+ul.bullets li::before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+ul.bullets li strong { font-weight: 700; color: var(--blue-dark); }
+
+ul.bullets--lg li { font-size: 16px; gap: 12px; }
+ul.bullets--lg li::before { width: 7px; height: 7px; margin-top: 7px; }
+
+/* ===== ACCENT BOX ===== */
+.accent-box {
+  background: var(--blue);
+  color: var(--white);
+  border-radius: var(--r);
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.accent-box strong { font-weight: 800; }
+.accent-box--light {
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+.accent-box--light strong { font-weight: 800; color: var(--blue); }
+
+/* ===== CARD ===== */
+.card {
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.card .card-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.card .card-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--blue);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.card .card-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ===== TABLE ===== */
+.blue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  border-radius: var(--r);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.blue-table thead tr {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.blue-table thead th {
+  padding: 10px 16px;
+  font-weight: 700;
+  text-align: left;
+  font-size: 13px;
+  letter-spacing: .01em;
+}
+
+.blue-table tbody tr {
+  border-bottom: 1px solid var(--line);
+}
+
+.blue-table tbody tr:last-child { border-bottom: none; }
+
+.blue-table tbody tr:nth-child(even) {
+  background: var(--blue-light);
+}
+
+.blue-table tbody td {
+  padding: 11px 16px;
+  line-height: 1.4;
+  vertical-align: top;
+}
+
+.blue-table tbody td:first-child {
+  font-weight: 700;
+  color: var(--blue-dark);
+  white-space: nowrap;
+}
+
+/* ===== PIPELINE FLOW ===== */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.pipe-node {
+  flex: 1;
+  background: var(--blue-light);
+  border: 1.5px solid var(--blue);
+  border-radius: var(--r);
+  padding: 10px 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue-dark);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.pipe-node .pipe-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  display: block;
+  margin-top: 3px;
+}
+
+.pipe-arrow {
+  flex-shrink: 0;
+  color: var(--blue);
+  font-size: 20px;
+  padding: 0 4px;
+  font-weight: 700;
+}
+
+/* Two-row pipeline */
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto;
+  gap: 8px 6px;
+  align-items: center;
+}
+
+/* ===== 4-IMAGE GRID ===== */
+.img-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.img-grid-4 .grid-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.img-grid-4 .grid-cell img {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  display: block;
+}
+
+.img-grid-4 .grid-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  text-align: center;
+}
+
+/* ===== 4-STATE LOG DIAGRAM ===== */
+.log-states {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.log-state {
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.log-state .ls-name {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--blue);
+  margin-bottom: 3px;
+}
+
+.log-state .ls-desc {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* ===== STAT ROW ===== */
+.stat-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.stat-row .card { flex: 1; }
+
+/* ===== CAPTION ===== */
+.caption {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+  padding-top: 4px;
+}
+
+/* ===== SECTION DIVIDER ===== */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: var(--line);
+  margin: 8px 0;
+}
+
+/* ===== CLOSING LINE ===== */
+.closing-line {
+  padding: 12px 18px;
+  border-left: 3px solid var(--blue);
+  background: var(--blue-light);
+  border-radius: 0 var(--r) var(--r) 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--blue-dark);
+  line-height: 1.4;
+}
+
+/* ===== VIDEO SLIDE ===== */
+.video-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 14px;
+}
+
+.video-center video {
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  max-width: 1100px;
+  max-height: 560px;
+  width: 100%;
+}
+
+/* ===== FOOTER LINE ===== */
+.slide-footer {
+  position: absolute;
+  bottom: 14px;
+  left: 60px;
+  right: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+
+.slide-footer .page-num {
+  font-weight: 700;
+  color: var(--blue);
+}

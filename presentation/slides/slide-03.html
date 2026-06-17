@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 03 — 수업 기법 매핑</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="slide">
+
+  <div class="slide-header">
+    <span class="section-badge">03</span>
+    <h2>수업 기법 매핑</h2>
+    <span class="sidebar-tag">Lecture → Implementation</span>
+  </div>
+
+  <div class="slide-body" style="gap:18px;">
+
+    <table class="blue-table">
+      <thead>
+        <tr>
+          <th>강의</th>
+          <th>핵심 기법</th>
+          <th>파이프라인 역할</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>6강</td>
+          <td>Canny 엣지 · Hough 변환</td>
+          <td>차선 선분 검출 — 엣지 → 선분 → 기울기 분류</td>
+        </tr>
+        <tr>
+          <td>7강</td>
+          <td>HSV 색상 필터 · 모폴로지</td>
+          <td>차선 후보 마스크 생성 — 클로징으로 점선 이음</td>
+        </tr>
+        <tr>
+          <td>9강</td>
+          <td>호모그래피</td>
+          <td>버드아이 뷰(탑다운) 변환 — 곡선 추종 기반</td>
+        </tr>
+        <tr>
+          <td>10강</td>
+          <td>시간 평활 · 옵티컬 플로우</td>
+          <td>차선 안정화(N=10) · 차량 검출 실험</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="accent-box--light accent-box" style="font-size:16px;">
+      핵심 <strong>4강의</strong>를 하나의 실시간 파이프라인으로 — 모든 기법을 욱여넣지 않고, 역할을 명확히 분리
+    </div>
+
+  </div>
+
+  <div class="slide-footer">
+    <span>RoadVision — Classical CV 차선 인식</span>
+    <span class="page-num">03 / 11</span>
+  </div>
+
+</div>
+<!-- NOTES: 먼저 어떤 강의 내용을 어디에 썼는지 정리했습니다. 6강의 Canny 엣지와 Hough 변환은 차선 선분 검출에, 7강의 HSV 색상 필터와 모폴로지는 차선 후보 마스크를 만드는 데, 9강의 호모그래피는 버드아이 뷰 변환에, 10강의 시간 평활과 옵티컬 플로우는 차선 안정화와 차량 실험에 사용했습니다. 모든 기법을 욱여넣지 않고, 핵심 네 개 강의를 하나의 실시간 파이프라인으로 엮었습니다. -->
+</body>
+</html>

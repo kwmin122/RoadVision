@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>RoadVision — Presentation</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #111;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Stage: centered 1280×720, scales to viewport */
+  #stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(var(--scale, 1));
+    transform-origin: center center;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+  }
+
+  #stage iframe {
+    width: 1280px;
+    height: 720px;
+    border: none;
+    display: block;
+    background: #fff;
+  }
+
+  /* Controls overlay */
+  #controls {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(0,0,0,.55);
+    border-radius: 32px;
+    padding: 8px 20px;
+    color: #fff;
+    font-size: 13px;
+    user-select: none;
+    z-index: 100;
+  }
+
+  #controls button {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+
+  #controls button:hover { background: rgba(255,255,255,.28); }
+  #controls button:disabled { opacity: .35; cursor: default; }
+
+  #slide-indicator {
+    min-width: 64px;
+    text-align: center;
+    font-weight: 700;
+    letter-spacing: .06em;
+  }
+
+  /* Fullscreen hint */
+  #hint {
+    position: fixed;
+    top: 12px;
+    right: 18px;
+    font-size: 11px;
+    color: rgba(255,255,255,.35);
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <iframe id="slide-frame" src="slides/slide-01.html" title="Slide"></iframe>
+</div>
+
+<div id="controls">
+  <button id="btn-prev" disabled>← 이전</button>
+  <span id="slide-indicator">1 / 11</span>
+  <button id="btn-next">다음 →</button>
+  <span style="opacity:.5; font-size:11px; margin-left:8px;">F = 전체화면</span>
+</div>
+
+<div id="hint">← / → 키로 이동 &nbsp;·&nbsp; F로 전체화면</div>
+
+<script>
+  const TOTAL = 11;
+  let current = 1;
+
+  const frame = document.getElementById('slide-frame');
+  const indicator = document.getElementById('slide-indicator');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const stage = document.getElementById('stage');
+
+  function padNum(n) { return String(n).padStart(2, '0'); }
+
+  function goTo(n) {
+    if (n < 1 || n > TOTAL) return;
+    current = n;
+    frame.src = `slides/slide-${padNum(current)}.html`;
+    indicator.textContent = `${current} / ${TOTAL}`;
+    btnPrev.disabled = current === 1;
+    btnNext.disabled = current === TOTAL;
+  }
+
+  btnPrev.addEventListener('click', () => goTo(current - 1));
+  btnNext.addEventListener('click', () => goTo(current + 1));
+
+  // Arrow key nav — listen on window so focus doesn't matter
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowLeft')                    { e.preventDefault(); goTo(current - 1); }
+    if (e.key === 'ArrowUp')                      { e.preventDefault(); goTo(1); }
+    if (e.key === 'ArrowDown')                    { e.preventDefault(); goTo(TOTAL); }
+    if (e.key === 'f' || e.key === 'F')           { toggleFullscreen(); }
+  });
+
+  // Scale stage to fit viewport
+  function rescale() {
+    const scaleX = window.innerWidth  / 1280;
+    const scaleY = window.innerHeight / 720;
+    const scale  = Math.min(scaleX, scaleY);
+    stage.style.setProperty('--scale', scale);
+  }
+
+  window.addEventListener('resize', rescale);
+  rescale();
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+</script>
+
+</body>
+</html>
