@@ -1,0 +1,23 @@
+# 대용량 미디어 — 커밋 금지 (fetch_clips.sh로 재현)
+clips/
+output/
+frames/
+*.mp4
+*.avi
+*.mov
+
+# 파이썬 환경
+.venv/
+venv/
+__pycache__/
+*.pyc
+.python-version
+
+# OS / 에디터
+.DS_Store
+.idea/
+.vscode/
+
+# 발표 캡처 산출물(대용량)
+presentation/*.png
+presentation/*.pdf
