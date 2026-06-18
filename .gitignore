@@ -28,3 +28,6 @@ presentation/render/
 !presentation/assets/demo_cut.mp4
 presentation/demo_build/
 presentation/pw/
+
+# 발표 데모 클립(예외 허용)
+!presentation/assets/clips/*.mp4

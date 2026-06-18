@@ -28,6 +28,16 @@ CLIPS = {
         "width": 1280, "height": 720,
         "role": "showcase",
     },
+    "harder_challenge_video": {     # 같은 카메라(1280×720) — 실제 차선 근접 탐색용
+        "path": "clips/harder_challenge_video.mp4",
+        "width": 1280, "height": 720,
+        "role": "test",
+    },
+    "challenge_video": {            # 같은 카메라(1280×720) — 실제 차선 근접 탐색용
+        "path": "clips/challenge_video.mp4",
+        "width": 1280, "height": 720,
+        "role": "test",
+    },
 }
 
 # --- 전처리 / 색상필터 (7강) ---  TODO-TUNE: 실제 프레임 보고 확정
@@ -186,6 +196,14 @@ BIRDEYE = {
     },
     "project_video": {
         "src": [(576, 461), (742, 461), (1178, 720), (154, 720)],  # tl, tr, br, bl
+        "dst": [(320, 0),   (960, 0),   (960, 720),  (320, 720)],
+    },
+    "harder_challenge_video": {  # 동일 카메라 → project_video 4점 재사용
+        "src": [(576, 461), (742, 461), (1178, 720), (154, 720)],
+        "dst": [(320, 0),   (960, 0),   (960, 720),  (320, 720)],
+    },
+    "challenge_video": {
+        "src": [(576, 461), (742, 461), (1178, 720), (154, 720)],
         "dst": [(320, 0),   (960, 0),   (960, 720),  (320, 720)],
     },
 }

@@ -17,3 +17,9 @@ curl -fSL -o clips/project_video.mp4    "$base_adv/project_video.mp4"
 
 echo "완료. 받은 파일:"
 ls -lh clips/*.mp4
+
+# 실제 차선 근접/이탈 탐색용 (LDW 실증 데모)
+echo "[+] harder_challenge_video.mp4 (실제 차선 근접)"
+curl -fSL -o clips/harder_challenge_video.mp4 "$base_adv/harder_challenge_video.mp4"
+echo "[+] challenge_video.mp4"
+curl -fSL -o clips/challenge_video.mp4 "$base_adv/challenge_video.mp4"
