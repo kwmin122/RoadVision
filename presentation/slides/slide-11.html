@@ -29,7 +29,7 @@
         <div class="card">
           <div class="card-label">LDW 검증</div>
           <div class="card-value">C4</div>
-          <div class="card-desc">합성 이동 테스트<br>이탈 경고 정상 동작</div>
+          <div class="card-desc">실제 주행 영상<br>이탈 경고 정상 동작</div>
         </div>
         <div class="card">
           <div class="card-label">처리 속도</div>
@@ -61,12 +61,10 @@
       </div>
     </div>
 
-    <!-- RIGHT: CSRT tracking image -->
+    <!-- RIGHT: CSRT tracking demo clip -->
     <div class="col col--40" style="align-items:center; justify-content:center;">
-      <div class="img-frame" style="width:100%; height:280px;">
-        <img src="../assets/st12_track.png" alt="CSRT 차량 추적 — 1060프레임 LOST 0"
-             style="width:100%; height:100%; object-fit:contain; display:block; background:#111;">
-      </div>
+      <video src="../assets/clips/demo_track.mp4" autoplay muted loop playsinline
+             style="width:100%; max-height:280px; border-radius:8px; box-shadow:0 2px 18px rgba(46,91,186,.18); display:block; object-fit:contain; background:#111;"></video>
       <div class="caption" style="margin-top:6px;">CSRT 추적: 1060프레임 / LOST 0</div>
       <div class="accent-box--light accent-box" style="margin-top:10px; font-size:13px; width:100%;">
         <strong>감사합니다</strong> — RoadVision
@@ -81,6 +79,6 @@
   </div>
 
 </div>
-<!-- NOTES: 정리하면, 직선 두 클립에서 좌우 차선 검출률 100퍼센트를 달성했고, 이탈 경고는 바퀴-차선 거리 모델로 합성 이동 테스트까지 검증했습니다. 차량은 두 가지로 나눠 봤습니다. 검출은 고전 기법으로 7퍼센트의 프레임에서만 잡혔고 대부분 오검출이라 한계가 분명했지만, 한 번 잡은 차를 CSRT 트래커로 추적하니 1060프레임 내내 LOST 0으로 끝까지 안정적으로 따라갔습니다. 고전 CV로 검출은 어렵지만 추적은 된다는 거죠. 검출의 이 한계가 딥러닝이 필요한 이유입니다. 고전 컴퓨터비전만으로도 차선 인식과 이탈 경고라는 ADAS 핵심 기능은 안정적으로 완성할 수 있었습니다. 감사합니다. -->
+<!-- NOTES: 정리하면, 직선 두 클립에서 좌우 차선 검출률 100퍼센트를 달성했고, 이탈 경고는 바퀴-차선 거리 모델로 실제 주행 영상에서 검증했습니다. 차량은 두 가지로 나눠 봤습니다. 검출은 고전 기법으로 7퍼센트의 프레임에서만 잡혔고 대부분 오검출이라 한계가 분명했지만, 한 번 잡은 차를 CSRT 트래커로 추적하니 1060프레임 내내 LOST 0으로 끝까지 안정적으로 따라갔습니다. 고전 CV로 검출은 어렵지만 추적은 된다는 거죠. 검출의 이 한계가 딥러닝이 필요한 이유입니다. 고전 컴퓨터비전만으로도 차선 인식과 이탈 경고라는 ADAS 핵심 기능은 안정적으로 완성할 수 있었습니다. 감사합니다. -->
 </body>
 </html>

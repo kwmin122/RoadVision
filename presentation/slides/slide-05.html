@@ -32,26 +32,11 @@
       </div>
     </div>
 
-    <!-- RIGHT: 4-image grid -->
-    <div class="col col--55" style="flex:1; min-height:0;">
-      <div class="img-grid-4">
-        <div class="grid-cell">
-          <img src="../assets/st02_colormask.png" alt="HSV 색상 마스크">
-          <div class="grid-label">HSV 흰/노랑 마스크</div>
-        </div>
-        <div class="grid-cell">
-          <img src="../assets/st03_canny.png" alt="Canny 엣지">
-          <div class="grid-label">Canny 엣지</div>
-        </div>
-        <div class="grid-cell">
-          <img src="../assets/st05_hough.png" alt="Hough 선분 + ROI">
-          <div class="grid-label">HoughLinesP + ROI</div>
-        </div>
-        <div class="grid-cell">
-          <img src="../assets/st07_ldw_area.png" alt="폴리핏 결과">
-          <div class="grid-label">폴리핏 차선</div>
-        </div>
-      </div>
+    <!-- RIGHT: live demo clip -->
+    <div class="col col--55" style="flex:1; min-height:0; align-items:center; justify-content:center;">
+      <video src="../assets/clips/demo_lane.mp4" autoplay muted loop playsinline
+             style="width:100%; max-height:440px; border-radius:8px; box-shadow:0 2px 18px rgba(46,91,186,.18); display:block; object-fit:contain;"></video>
+      <div class="caption" style="margin-top:6px;">실시간 차선 검출·추적 — 파이프라인 실제 출력</div>
     </div>
 
   </div>
