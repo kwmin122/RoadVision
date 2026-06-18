@@ -50,7 +50,11 @@
     font-size: 13px;
     user-select: none;
     z-index: 100;
+    transition: opacity .35s ease;
   }
+
+  /* 자동 숨김: 마우스 멈추면 사라져 슬라이드 글을 가리지 않음 */
+  #controls.idle, #hint.idle { opacity: 0; pointer-events: none; }
 
   #controls button {
     background: rgba(255,255,255,.15);
@@ -81,6 +85,7 @@
     font-size: 11px;
     color: rgba(255,255,255,.35);
     z-index: 100;
+    transition: opacity .35s ease;
   }
 </style>
 </head>
@@ -142,6 +147,19 @@
 
   window.addEventListener('resize', rescale);
   rescale();
+
+  // 컨트롤 자동 숨김 — 마우스 멈추면 2.5초 뒤 사라지고, 움직이면 다시 표시
+  const controls = document.getElementById('controls');
+  const hint = document.getElementById('hint');
+  let idleTimer = null;
+  function showControls() {
+    controls.classList.remove('idle'); hint.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { controls.classList.add('idle'); hint.classList.add('idle'); }, 2500);
+  }
+  window.addEventListener('mousemove', showControls);
+  window.addEventListener('keydown', showControls);
+  showControls();
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {

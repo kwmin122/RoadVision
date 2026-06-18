@@ -15,27 +15,29 @@
     <span class="sidebar-tag">LDW Distance Model</span>
   </div>
 
-  <div class="slide-body" style="padding-top:14px; padding-bottom:28px; gap:10px;">
+  <div class="slide-body" style="padding-top:18px; padding-bottom:24px; flex-direction:row; gap:36px; align-items:flex-start;">
 
-    <!-- Bullets block -->
-    <ul class="bullets bullets--lg">
-      <li>차선중앙 vs 차량중심 → <strong>정규화 오프셋</strong></li>
-      <li>물리 환산: 차폭 <strong>1.8m</strong>·차선폭 <strong>3.7m</strong> 가정 → <strong>바퀴–차선 남은 거리(m)</strong></li>
-      <li><span style="color:#e8a000; font-weight:700;">CAUTION ≤ 0.45m</span>(노랑, 조기경보) &nbsp;·&nbsp; <span style="color:#c0392b; font-weight:700;">DANGER ≤ 0.15m</span>(빨강, 임박)</li>
-      <li>거리 히스테리시스로 <strong>깜빡임 방지</strong></li>
-      <li><span style="color:var(--muted); font-size:14px;">※ 미보정 근사 지표 — 정밀 측정 아님</span></li>
-      <li>9강 호모그래피 <strong>버드아이 뷰</strong> 병행</li>
-    </ul>
+    <!-- LEFT: 모델 설명 -->
+    <div style="flex:0 0 44%; display:flex; flex-direction:column; gap:2px;">
+      <ul class="bullets bullets--lg">
+        <li>차선중앙 vs 차량중심 → <strong>정규화 오프셋</strong></li>
+        <li>물리 환산: 차폭 <strong>1.8m</strong>·차선폭 <strong>3.7m</strong> 가정 → <strong>바퀴–차선 남은 거리(m)</strong></li>
+        <li><span style="color:#e8a000; font-weight:700;">CAUTION ≤ 0.45m</span>(노랑, 조기경보)<br><span style="color:#c0392b; font-weight:700;">DANGER ≤ 0.15m</span>(빨강, 임박)</li>
+        <li>거리 히스테리시스로 <strong>깜빡임 방지</strong></li>
+        <li><span style="color:var(--muted); font-size:14px;">※ 미보정 근사 지표 — 정밀 측정 아님</span></li>
+        <li>9강 호모그래피 <strong>버드아이 뷰</strong> 병행</li>
+      </ul>
+      <div class="caption" style="text-align:left; margin-top:14px;">SAFE(녹) → CAUTION ≤0.45m(노랑) → DANGER ≤0.15m(빨강) 3-상태 경고</div>
+    </div>
 
-    <!-- LDW demo clip + honesty bullets -->
-    <div style="width:100%; flex:1; min-height:0; display:flex; flex-direction:column; gap:8px; justify-content:flex-end;">
+    <!-- RIGHT: 큰 실제 데모 영상 -->
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
       <video src="../assets/clips/demo_ldw.mp4" autoplay muted loop playsinline
-             style="width:100%; max-height:220px; border-radius:8px; box-shadow:0 2px 18px rgba(46,91,186,.18); display:block; object-fit:contain; background:#111;"></video>
-      <ul class="bullets" style="margin-top:4px;">
+             style="width:100%; aspect-ratio:16/9; border-radius:8px; box-shadow:0 2px 18px rgba(46,91,186,.18); display:block; object-fit:cover; background:#111;"></video>
+      <ul class="bullets">
         <li>실제 주행 영상 — 차선 근접 시 경고 발동 <strong>(합성 주입 없음)</strong></li>
         <li>직선 기반 모델이라 <strong>급커브에서는 민감하게 반응하는 한계 있음</strong></li>
       </ul>
-      <div class="caption">SAFE(녹) → CAUTION ≤0.45m(노랑) → DANGER ≤0.15m(빨강) 3-상태 경고</div>
     </div>
 
   </div>
